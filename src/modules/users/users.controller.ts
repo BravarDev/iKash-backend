@@ -16,6 +16,11 @@ export class UsersController {
     return this.service.getOrCreateAccount(publicKey);
   }
 
+  @Post('early-register')
+  earlyRegister(@Body('email') email: string) {
+    return this.service.earlyRegister(email);
+  }
+
   @Get('available-username')
   checkAlias(@Query('alias') alias: string) {
     return this.service.isAliasAvailable(alias);

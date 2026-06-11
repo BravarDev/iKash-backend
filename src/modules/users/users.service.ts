@@ -19,6 +19,22 @@ export class UsersService {
     return this.repo.findOrCreateByPublicKey(publicKey);
   }
 
+  async earlyRegister(email: string) {
+    if (!email) {
+      throw new BadRequestException('Email is required');
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      throw new BadRequestException('Formato de correo electrónico inválido');
+    }
+
+    return this.prisma.waitlist.upsert({
+      where: { email },
+      update: {}, // idempotent, si existe no hace nada
+      create: { email },
+    });
+  }
+
   async isAliasAvailable(alias: string) {
     const available = await this.repo.isAliasAvailable(alias);
     return { available };
