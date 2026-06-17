@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { PrismaClient } = require('@prisma/client');
-const StellarSdk = require('stellar-sdk');
+const StellarSdk = require('@stellar/stellar-sdk');
 
 // Configuration
 const BASE_URL = 'http://127.0.0.1:3000';

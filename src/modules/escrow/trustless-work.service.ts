@@ -1,7 +1,7 @@
 import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance, AxiosError } from 'axios';
-import * as StellarSdk from 'stellar-sdk';
+import * as StellarSdk from '@stellar/stellar-sdk';
 
 /**
  * TrustlessWorkService
