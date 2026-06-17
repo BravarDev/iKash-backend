@@ -35,6 +35,11 @@ export class StellarService {
     this.server = new Horizon.Server(horizonUrl);
   }
 
+  /** Passphrase de la red configurada (testnet/public). */
+  getNetworkPassphrase() {
+    return this.networkPassphrase;
+  }
+
   async getAccount(publicKey: string) {
     this.assertPublicKey(publicKey);
     return this.server.loadAccount(publicKey);
@@ -130,6 +135,115 @@ export class StellarService {
       ledger: res.ledger,
       successful: res.successful,
     };
+  }
+
+  /**
+   * Arma una transacción USDC SIN firmar para el flujo Send Crypto.
+   * Incluye un pago al destinatario y un segundo pago con el fee al colector.
+   * El frontend firma el XDR resultante; el backend solo lo construye.
+   */
+  async buildUnsignedUsdcSend(params: {
+    sourcePublicKey: string;
+    destination: string;
+    amount: string;
+    feeAddress: string;
+    feeAmount: string;
+  }) {
+    this.assertPublicKey(params.sourcePublicKey);
+    this.assertPublicKey(params.destination);
+    this.assertPublicKey(params.feeAddress);
+    this.assertAmount(params.amount);
+    this.assertAmount(params.feeAmount);
+
+    const usdc = this.getUsdcAsset();
+
+    const account = await this.server.loadAccount(params.sourcePublicKey);
+
+    const tx = new TransactionBuilder(account, {
+      fee: String(BASE_FEE),
+      networkPassphrase: this.networkPassphrase,
+    })
+      .addOperation(
+        Operation.payment({
+          destination: params.destination,
+          asset: usdc,
+          amount: params.amount,
+        }),
+      )
+      .addOperation(
+        Operation.payment({
+          destination: params.feeAddress,
+          asset: usdc,
+          amount: params.feeAmount,
+        }),
+      )
+      .setTimeout(180)
+      .build();
+
+    return {
+      xdr: tx.toXDR(),
+      networkPassphrase: this.networkPassphrase,
+    };
+  }
+
+  /**
+   * Recibe un XDR ya firmado por el cliente y lo envía a Stellar.
+   * Traduce errores de Horizon a mensajes claros.
+   */
+  async submitSignedXdr(signedXdr: string) {
+    let tx;
+    try {
+      tx = TransactionBuilder.fromXDR(signedXdr, this.networkPassphrase);
+    } catch {
+      throw new BadRequestException('signedXdr inválido o mal formado.');
+    }
+
+    try {
+      const res = await this.server.submitTransaction(tx as any);
+      return {
+        hash: res.hash,
+        ledger: res.ledger,
+        successful: res.successful,
+      };
+    } catch (err: any) {
+      throw new BadRequestException(this.describeHorizonError(err));
+    }
+  }
+
+  /** Construye el Asset USDC a partir del issuer configurado. */
+  private getUsdcAsset() {
+    const issuer = this.config.get<string>('TRUSTLESS_WORK_USDC_ISSUER');
+    if (!issuer) {
+      throw new BadRequestException(
+        'Falta TRUSTLESS_WORK_USDC_ISSUER para operar con USDC.',
+      );
+    }
+    this.assertPublicKey(issuer);
+    return new Asset('USDC', issuer);
+  }
+
+  /** Extrae un mensaje legible de los errores de Horizon. */
+  private describeHorizonError(err: any): string {
+    const codes = err?.response?.data?.extras?.result_codes;
+    const txCode = codes?.transaction;
+    const opCodes: string[] = codes?.operations ?? [];
+
+    if (opCodes.includes('op_no_trust')) {
+      return 'El destinatario o el colector no tiene trustline para USDC.';
+    }
+    if (opCodes.includes('op_underfunded') || txCode === 'tx_insufficient_balance') {
+      return 'Fondos insuficientes para cubrir el monto y el fee.';
+    }
+    if (txCode === 'tx_bad_auth' || txCode === 'tx_bad_auth_extra') {
+      return 'La transacción no está firmada correctamente.';
+    }
+    if (txCode === 'tx_too_late' || txCode === 'tx_too_early') {
+      return 'La transacción expiró. Vuelve a prepararla y firmarla.';
+    }
+    if (txCode) {
+      return `Stellar rechazó la transacción (${txCode}).`;
+    }
+    return 'No se pudo enviar la transacción a Stellar.';
   }
 
   private buildAsset(asset?: { code: string; issuer?: string }) {

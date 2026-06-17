@@ -13,6 +13,10 @@ export class UsersRepository extends BaseRepository {
     return this.prisma.appUser.findUnique({ where: { publicKey } });
   }
 
+  findByAlias(alias: string) {
+    return this.prisma.appUser.findUnique({ where: { alias } });
+  }
+
   async findOrCreateByPublicKey(publicKey: string) {
     const existing = await this.findByPublicKey(publicKey);
     if (existing) return existing;
