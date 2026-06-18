@@ -18,6 +18,7 @@ model AppUser {
   createdAt            DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   currentNonce         String?          @map("current_nonce")
   email                String?          @map("email")
+  profileImageUrl      String?          @map("profile_image_url")
   notificationsEnabled Boolean          @default(true) @map("notifications_enabled")
   pendingAccountInfo   Boolean          @default(true) @map("pending_account_info")
   preferredCurrency    String?          @map("preferred_currency")
