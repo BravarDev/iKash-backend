@@ -50,11 +50,24 @@ export class KycService {
   }
 
   async processWebhookEvent(payload: any) {
-    const { vendor_data, status } = payload;
-    const userId = vendor_data;
+    // Log full payload for debugging
+    this.logger.log(`[KYC WEBHOOK] Full payload: ${JSON.stringify(payload)}`);
+
+    // Didit sends vendor_data and status at the top level of the webhook payload.
+    const userId = payload?.vendor_data 
+      || payload?.verification_session?.vendor_data 
+      || payload?.session?.vendor_data
+      || payload?.data?.vendor_data;
+
+    const rawStatus = payload?.status
+      || payload?.verification_session?.status
+      || payload?.session?.status
+      || payload?.data?.status;
+
+    this.logger.log(`[KYC WEBHOOK] Extracted userId=${userId}, rawStatus=${rawStatus}`);
 
     if (!userId) {
-      this.logger.warn('Webhook received without vendor_data (userId)');
+      this.logger.warn(`[KYC WEBHOOK] No vendor_data found in payload keys: ${Object.keys(payload || {}).join(', ')}`);
       return;
     }
 
@@ -62,16 +75,16 @@ export class KycService {
     // Validate UUID to prevent Prisma from crashing.
     const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
     if (!uuidRegex.test(userId)) {
-      this.logger.warn(`Skipping database update: vendor_data '${userId}' is not a valid UUID (usually happens with Test Webhooks).`);
+      this.logger.warn(`[KYC WEBHOOK] Skipping: vendor_data '${userId}' is not a valid UUID`);
       return;
     }
 
-    this.logger.log(`Processing KYC webhook for user: ${userId}, status: ${status}`);
+    // Map Didit's string statuses to our internal enum
+    // Didit sends capitalized: "Approved", "Declined", "In Review", "Not Started", etc.
+    const statusLower = rawStatus?.toLowerCase().trim().replace(/ +/g, '_') || '';
+    this.logger.log(`[KYC WEBHOOK] Normalized status: '${statusLower}'`);
 
-    // We map Didit's string statuses to our internal enum. Didit sometimes sends spaces like "Not Started"
-    const statusLower = status?.toLowerCase().trim().replace(/ +/g, '_') || '';
     let kycStatus: any = 'pending';
-
     if (statusLower === 'approved') {
       kycStatus = 'approved';
     } else if (statusLower === 'declined' || statusLower === 'rejected') {
@@ -95,16 +108,16 @@ export class KycService {
     }
 
     try {
-      await this.prisma.appUser.update({
+      const updatedUser = await this.prisma.appUser.update({
         where: { userId },
         data: { 
           kycStatus,
           kycUpdatedAt: new Date()
         },
       });
-      this.logger.log(`Successfully updated user ${userId} to KYC status: ${kycStatus}`);
+      this.logger.log(`[KYC WEBHOOK] ✅ Updated user ${userId} → kycStatus: ${updatedUser.kycStatus}`);
     } catch (error) {
-      this.logger.error(`Failed to update user kycStatus in database: ${error.message}`);
+      this.logger.error(`[KYC WEBHOOK] ❌ Failed to update user ${userId}: ${error.message}`);
     }
   }
 }

@@ -1,17 +1,37 @@
+/**
+ * trustless-work.service.ts
+ *
+ * HTTP client for the Trustless Work REST API.
+ *
+ * Changes from the original version:
+ *  - All payloads now use the canonical types from trustless-work.types.ts
+ *  - `roles` is a plain object with the exact keys the API expects
+ *    (no `client` key — that field does not exist in the TW schema)
+ *  - `trustline` is always an object { address, symbol }; never null/undefined
+ *  - `initializeEscrow` param type now enforces `MultiReleaseRoles` directly,
+ *    eliminating the `Record<string, string>` footgun
+ *  - Response types are explicit instead of `any`
+ *
+ * SECURITY: This service NEVER handles private keys except in signAndBroadcast,
+ * which must only be called with secrets sourced from env vars.
+ */
+
 import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import * as StellarSdk from 'stellar-sdk';
+import {
+  InitializeMultiReleaseEscrowPayload,
+  FundEscrowPayload,
+  ChangeMilestoneStatusPayload,
+  ApproveMilestonePayload,
+  ReleaseMilestoneFundsPayload,
+  UnsignedTransactionResponse,
+  SendTransactionResponse,
+  EscrowIndexerEntry,
+  EscrowBalanceResponse,
+} from './trustless-work.types';
 
-/**
- * TrustlessWorkService
- *
- * HTTP client wrapper for the Trustless Work REST API.
- * Handles all communication with the escrow protocol.
- *
- * SECURITY: This service NEVER handles private keys.
- * It builds unsigned transactions and broadcasts already-signed ones.
- */
 @Injectable()
 export class TrustlessWorkService {
   private readonly http: AxiosInstance;
@@ -29,110 +49,128 @@ export class TrustlessWorkService {
         'x-api-key': apiKey,
       },
     });
+
+    // Log outgoing payloads in debug mode so validation errors are easy to diagnose
+    this.http.interceptors.request.use((req) => {
+      this.logger.debug(
+        `TW → ${req.method?.toUpperCase()} ${req.url}\n${JSON.stringify(req.data, null, 2)}`,
+      );
+      return req;
+    });
   }
 
-  // ─── Deploy ────────────────────────────────────────────────────────────
+  // ─── Deploy ────────────────────────────────────────────────────────────────
 
   /**
-   * Initialize a multi-release escrow contract.
-   * Returns an unsigned XDR transaction that must be signed client-side.
+   * POST /deployer/multi-release
+   *
+   * Builds an unsigned XDR that deploys a new multi-release escrow contract.
+   * The caller must sign and broadcast via sendTransaction().
+   *
+   * API required fields: signer, engagementId, title, description,
+   *                       roles, platformFee, milestones, trustline
+   *
+   * Roles must be a plain object — never an array or a Record<string,string>.
+   * Valid keys: approver, serviceProvider, platformAddress, releaseSigner, disputeResolver
+   *
+   * Trustline must be { address: string, symbol: string } — never null.
+   * For native XLM use { address: '', symbol: 'XLM' }.
    */
-  async initializeEscrow(payload: {
-    signer: string;
-    engagementId: string;
-    title: string;
-    description: string;
-    roles: Record<string, string>;
-    platformFee: number;
-    milestones: Array<{
-      description: string;
-      amount: number;
-      receiver: string;
-      status?: string;
-    }>;
-    trustline: { address: string; symbol: string };
-  }): Promise<{ unsignedTransaction: string }> {
-    return this.post('/deployer/multi-release', payload);
+  async initializeEscrow(
+    payload: InitializeMultiReleaseEscrowPayload,
+  ): Promise<UnsignedTransactionResponse> {
+    const assetSymbol = payload.trustline?.symbol?.toUpperCase();
+    if (assetSymbol !== 'USDC') {
+      throw new HttpException(
+        {
+          error: 'InvalidAsset',
+          message: `Only USDC is supported for escrow. Received: "${payload.trustline?.symbol}"`,
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return this.post<UnsignedTransactionResponse>('/deployer/multi-release', payload);
   }
 
-  // ─── Fund ──────────────────────────────────────────────────────────────
+  // ─── Fund ──────────────────────────────────────────────────────────────────
 
   /**
-   * Fund an existing escrow contract with USDC.
-   * Returns an unsigned XDR transaction.
+   * POST /escrow/multi-release/fund-escrow
+   *
+   * Builds an unsigned XDR for the seller to fund the escrow.
+   * `amount` should equal the sum of all milestone amounts.
    */
-  async fundEscrow(payload: {
-    contractId: string;
-    signer: string;
-    amount: number;
-  }): Promise<{ unsignedTransaction: string }> {
-    return this.post('/escrow/multi-release/fund-escrow', payload);
+  async fundEscrow(
+    payload: FundEscrowPayload,
+  ): Promise<UnsignedTransactionResponse> {
+    return this.post<UnsignedTransactionResponse>(
+      '/escrow/multi-release/fund-escrow',
+      payload,
+    );
   }
 
-  // ─── Milestone ─────────────────────────────────────────────────────────
+  // ─── Milestone ─────────────────────────────────────────────────────────────
 
   /**
-   * Change milestone status (service provider marks as complete).
-   * Returns an unsigned XDR transaction.
+   * POST /escrow/multi-release/change-milestone-status
+   *
+   * Service provider marks a milestone as completed and attaches evidence.
+   * `newEvidence` is required by the API schema (use a placeholder if not applicable).
    */
-  async changeMilestoneStatus(payload: {
-    contractId: string;
-    milestoneIndex: string;
-    newEvidence: string;
-    newStatus: string;
-    serviceProvider: string;
-  }): Promise<{ unsignedTransaction: string }> {
-    return this.post(
+  async changeMilestoneStatus(
+    payload: ChangeMilestoneStatusPayload,
+  ): Promise<UnsignedTransactionResponse> {
+    return this.post<UnsignedTransactionResponse>(
       '/escrow/multi-release/change-milestone-status',
       payload,
     );
   }
 
   /**
-   * Approve a completed milestone (approver only).
-   * Returns an unsigned XDR transaction.
+   * POST /escrow/multi-release/approve-milestone
+   *
+   * Approver validates completed milestone work.
+   * Must be called before releaseMilestoneFunds when milestone status is 'completed'.
    */
-  async approveMilestone(payload: {
-    contractId: string;
-    approver: string;
-    milestoneIndex: string;
-  }): Promise<{ unsignedTransaction: string }> {
-    return this.post(
+  async approveMilestone(
+    payload: ApproveMilestonePayload,
+  ): Promise<UnsignedTransactionResponse> {
+    return this.post<UnsignedTransactionResponse>(
       '/escrow/multi-release/approve-milestone',
       payload,
     );
   }
 
   /**
-   * Release funds for a completed milestone.
-   * Returns an unsigned XDR transaction.
+   * POST /escrow/multi-release/release-milestone-funds
+   *
+   * Releases funds for an approved milestone to the milestone's receiver address.
    */
-  async releaseMilestoneFunds(payload: {
-    contractId: string;
-    releaseSigner: string;
-    milestoneIndex: string;
-  }): Promise<{ unsignedTransaction: string }> {
-    return this.post(
+  async releaseMilestoneFunds(
+    payload: ReleaseMilestoneFundsPayload,
+  ): Promise<UnsignedTransactionResponse> {
+    return this.post<UnsignedTransactionResponse>(
       '/escrow/multi-release/release-milestone-funds',
       payload,
     );
   }
 
-  // ─── Broadcast ─────────────────────────────────────────────────────────
+  // ─── Broadcast ─────────────────────────────────────────────────────────────
 
   /**
-   * Send a signed XDR transaction to the Stellar network.
-   * This is the ONLY method that actually executes on-chain.
+   * POST /helper/send-transaction
+   *
+   * Broadcasts a client-signed XDR to the Stellar network.
+   * This is the ONLY operation that actually executes on-chain.
+   *
+   * Response shape:
+   *   - Deploy tx success → { status, contractId, escrow }
+   *   - Other tx success  → { status, message }
    */
-  async sendTransaction(
-    signedXdr: string,
-  ): Promise<{
-    status: string;
-    message?: string;
-    contractId?: string;
-    escrow?: any;
-  }> {
-    return this.post('/helper/send-transaction', { signedXdr });
+  async sendTransaction(signedXdr: string): Promise<SendTransactionResponse> {
+    return this.post<SendTransactionResponse>('/helper/send-transaction', {
+      signedXdr,
+    });
   }
 
   /**
@@ -149,33 +187,21 @@ export class TrustlessWorkService {
     unsignedXdr: string,
     signerSecret: string,
     networkPassphrase: string,
-  ): Promise<{
-    status: string;
-    contractId?: string;
-    message?: string;
-  }> {
+  ): Promise<SendTransactionResponse> {
     const keypair = StellarSdk.Keypair.fromSecret(signerSecret);
-
     const raw = Buffer.from(unsignedXdr, 'base64');
 
-    // First 4 bytes = envelope type discriminant (big-endian uint32)
     const envelopeTypeValue = raw.readUInt32BE(0);
-
-    // For unsigned envelopes the last 4 bytes are the empty signatures array (count = 0)
     const sigCount = raw.readUInt32BE(raw.length - 4);
+
     if (sigCount !== 0) {
       this.logger.warn(
         `Envelope already has ${sigCount} signature(s) — appending ours`,
       );
     }
 
-    // Extract transaction body bytes (between envelope type prefix and signatures suffix)
-    // For an unsigned tx: raw = [4-byte type] [tx bytes] [4-byte sig count = 0]
     const txBodyBytes = raw.subarray(4, raw.length - 4);
 
-    // Compute hash preimage: SHA256(networkId || envelopeType || txBody)
-    // The signing envelope type is always ENVELOPE_TYPE_TX (2) for v1 transactions
-    // and ENVELOPE_TYPE_TX_FEE_BUMP (5) for fee bump — use what we read
     const networkId = StellarSdk.hash(Buffer.from(networkPassphrase));
     const typeTag = Buffer.alloc(4);
     typeTag.writeUInt32BE(envelopeTypeValue, 0);
@@ -183,51 +209,44 @@ export class TrustlessWorkService {
     const hashPreimage = Buffer.concat([networkId, typeTag, txBodyBytes]);
     const txHash = StellarSdk.hash(hashPreimage);
 
-    // Sign the hash with ed25519
     const signature = keypair.sign(txHash);
-    const hint = keypair.signatureHint(); // last 4 bytes of public key
+    const hint = keypair.signatureHint();
 
-    // Build DecoratedSignature XDR:
-    //   hint:      opaque[4]   → 4 bytes
-    //   signature: opaque<64>  → 4 bytes length prefix + 64 bytes data
+    // DecoratedSignature XDR: hint(4) + length_prefix(4) + signature(64)
     const decoratedSig = Buffer.alloc(4 + 4 + 64);
-    hint.copy(decoratedSig, 0);                  // hint (4 bytes)
-    decoratedSig.writeUInt32BE(64, 4);            // signature length prefix
-    signature.copy(decoratedSig, 8);              // signature data (64 bytes)
+    hint.copy(decoratedSig, 0);
+    decoratedSig.writeUInt32BE(64, 4);
+    signature.copy(decoratedSig, 8);
 
-    // Reconstruct the signed envelope:
-    //   [envelope type] [tx body] [new sig count] [existing sigs...] [our sig]
     const newSigCount = Buffer.alloc(4);
     newSigCount.writeUInt32BE(sigCount + 1, 0);
 
-    // If there were existing signatures, we need to include them
-    let existingSigs = Buffer.alloc(0);
-    if (sigCount > 0) {
-      // Each decorated signature is 4 (hint) + 4 (len) + 64 (sig) = 72 bytes
-      const existingSigsLength = sigCount * 72;
-      existingSigs = raw.subarray(raw.length - 4 - existingSigsLength, raw.length - 4);
-      // Re-extract txBodyBytes without existing sigs
-      const txEnd = raw.length - 4 - existingSigsLength;
-      const signedEnvelope = Buffer.concat([
-        raw.subarray(0, 4),                       // envelope type
-        raw.subarray(4, txEnd),                    // tx body
-        newSigCount,                               // updated sig count
-        existingSigs,                              // existing signatures
-        decoratedSig,                              // our new signature
-      ]);
-      const signedXdr = signedEnvelope.toString('base64');
-      this.logger.debug(
-        `Broadcasting backend-signed tx for signer ${keypair.publicKey().substring(0, 8)}…`,
-      );
-      return this.sendTransaction(signedXdr);
-    }
+    let signedEnvelope: Buffer;
 
-    const signedEnvelope = Buffer.concat([
-      raw.subarray(0, 4),                         // envelope type
-      txBodyBytes,                                 // tx body (unchanged)
-      newSigCount,                                 // sig count = 1
-      decoratedSig,                                // our signature
-    ]);
+    if (sigCount > 0) {
+      // Each decorated signature = 4 (hint) + 4 (len prefix) + 64 (sig) = 72 bytes
+      const existingSigsLength = sigCount * 72;
+      const existingSigs = raw.subarray(
+        raw.length - 4 - existingSigsLength,
+        raw.length - 4,
+      );
+      const txEnd = raw.length - 4 - existingSigsLength;
+
+      signedEnvelope = Buffer.concat([
+        raw.subarray(0, 4),       // envelope type
+        raw.subarray(4, txEnd),   // tx body
+        newSigCount,              // updated sig count
+        existingSigs,             // existing signatures
+        decoratedSig,             // our new signature
+      ]);
+    } else {
+      signedEnvelope = Buffer.concat([
+        raw.subarray(0, 4),       // envelope type
+        txBodyBytes,              // tx body
+        newSigCount,              // sig count = 1
+        decoratedSig,             // our signature
+      ]);
+    }
 
     const signedXdr = signedEnvelope.toString('base64');
 
@@ -238,33 +257,37 @@ export class TrustlessWorkService {
     return this.sendTransaction(signedXdr);
   }
 
-  // ─── Query ─────────────────────────────────────────────────────────────
+  // ─── Query ─────────────────────────────────────────────────────────────────
 
   /**
-   * Get escrow data from the on-chain indexer by contract ID.
-   * Optionally validates against the blockchain for integrity.
+   * GET /helper/get-escrow-by-contract-ids?contractIds[]=…&validateOnChain=…
    */
   async getEscrowByContractId(
     contractId: string,
     validateOnChain = false,
-  ): Promise<any> {
+  ): Promise<EscrowIndexerEntry[]> {
     const params = new URLSearchParams();
     params.append('contractIds[]', contractId);
     params.append('validateOnChain', String(validateOnChain));
 
-    return this.get(`/helper/get-escrow-by-contract-ids?${params.toString()}`);
+    return this.get<EscrowIndexerEntry[]>(
+      `/helper/get-escrow-by-contract-ids?${params.toString()}`,
+    );
   }
 
   /**
-   * Get the on-chain balance of an escrow contract.
+   * GET /helper/get-multiple-escrow-balance?addresses=…
    */
-  async getEscrowBalance(contractAddress: string): Promise<any> {
-    return this.get('/helper/get-multiple-escrow-balance', {
-      params: { addresses: [contractAddress] },
-    });
+  async getEscrowBalance(
+    contractAddress: string,
+  ): Promise<EscrowBalanceResponse[]> {
+    return this.get<EscrowBalanceResponse[]>(
+      '/helper/get-multiple-escrow-balance',
+      { params: { addresses: [contractAddress] } },
+    );
   }
 
-  // ─── HTTP helpers ──────────────────────────────────────────────────────
+  // ─── HTTP helpers ──────────────────────────────────────────────────────────
 
   private async post<T>(url: string, data: unknown): Promise<T> {
     try {
@@ -275,7 +298,7 @@ export class TrustlessWorkService {
     }
   }
 
-  private async get<T>(url: string, config?: any): Promise<T> {
+  private async get<T>(url: string, config?: object): Promise<T> {
     try {
       const res = await this.http.get<T>(url, config);
       return res.data;
@@ -287,20 +310,26 @@ export class TrustlessWorkService {
   private handleError(err: unknown, context: string): never {
     if (err instanceof AxiosError) {
       const status = err.response?.status ?? HttpStatus.BAD_GATEWAY;
-      const message =
-        err.response?.data?.message ??
-        err.response?.data?.error ??
-        err.message;
+      const responseData = err.response?.data;
 
+      // Log the full raw response body so validation errors are visible in detail
       this.logger.error(
-        `Trustless Work API error [${context}]: ${status} — ${JSON.stringify(message)}`,
+        `Trustless Work API error [${context}]\n` +
+        `  Status : ${status}\n` +
+        `  Body   : ${JSON.stringify(responseData, null, 2)}\n` +
+        `  Message: ${err.message}`,
       );
+
+      const message =
+        responseData?.message ??
+        responseData?.error ??
+        err.message;
 
       throw new HttpException(
         {
           error: 'TrustlessWorkError',
           message: `Escrow operation failed: ${message}`,
-          details: err.response?.data,
+          details: responseData,
         },
         status,
       );

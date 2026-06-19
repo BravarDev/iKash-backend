@@ -50,8 +50,8 @@ async function main() {
       },
     });
   }
-
   console.log('Seeding completed successfully.');
+  console.log('Finished providers seeding.');
 }
 
 main()

@@ -25,4 +25,13 @@ export class UpdateUserDto {
   @IsOptional()
   @IsString()
   kycStatus?: 'not_started' | 'in_progress' | 'in_review' | 'approved' | 'rejected' | 'expired' | 'kyc_expired' | 'abandoned' | 'resubmitted' | 'pending';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(250)
+  bio?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  securityUpdates?: boolean;
 }

@@ -19,6 +19,22 @@ export class UsersService {
     return this.repo.findOrCreateByPublicKey(publicKey);
   }
 
+  async earlyRegister(email: string) {
+    if (!email) {
+      throw new BadRequestException('Email is required');
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      throw new BadRequestException('Formato de correo electrónico inválido');
+    }
+
+    return this.prisma.waitlist.upsert({
+      where: { email },
+      update: {}, // idempotent, si existe no hace nada
+      create: { email },
+    });
+  }
+
   async isAliasAvailable(alias: string) {
     const available = await this.repo.isAliasAvailable(alias);
     return { available };
@@ -37,18 +53,6 @@ export class UsersService {
       pendingAccountInfo: false 
     });
 
-    // 1. Create Legacy PaymentMethod if data provided
-    if (bankName || accountNumber) {
-      await this.prisma.paymentMethod.create({
-        data: {
-          userId,
-          bankName: bankName ?? 'Unknown',
-          accountDetails: `${accountHolderName ?? ''} | ${accountNumber ?? ''}`,
-        },
-      });
-    }
-
-    // 2. Create New payment_method (snake_case) if providerId provided
     if (providerId && accountIdentifier) {
       const provider = await this.prisma.payment_provider.findUnique({
         where: { provider_id: providerId }
@@ -58,14 +62,14 @@ export class UsersService {
         throw new NotFoundException('Payment provider not found');
       }
 
-      await this.prisma.payment_method.create({
+      await this.prisma.paymentMethod.create({
         data: {
-          user_id: userId,
-          provider_id: providerId,
+          userId,
+          providerId,
           type: provider.type,
-          account_identifier: accountIdentifier,
-          identification_number: identificationNumber,
-          beneficiary_name: beneficiaryName,
+          accountIdentifier: accountIdentifier,
+          identificationNumber: identificationNumber,
+          beneficiaryName: beneficiaryName,
           description: description,
         },
       });

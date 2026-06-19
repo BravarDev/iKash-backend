@@ -67,5 +67,186 @@
         }
       ]
     }
+  },
+  {
+    "name": "Banco Nacional de Costa Rica",
+    "type": "BANK",
+    "country_code": "CR",
+    "metadata": {
+      "ui_requirements": [
+        {
+          "db_field": "account_identifier",
+          "label": "Número de cuenta",
+          "type": "text",
+          "placeholder": "000-000000-000",
+          "required": true
+        },
+        {
+          "db_field": "beneficiary_name",
+          "label": "Nombre del titular",
+          "type": "text",
+          "placeholder": "María García",
+          "required": true
+        }
+      ]
+    }
+  },
+  {
+    "name": "Banco de Costa Rica",
+    "type": "BANK",
+    "country_code": "CR",
+    "metadata": {
+      "ui_requirements": [
+        {
+          "db_field": "account_identifier",
+          "label": "Número de cuenta",
+          "type": "text",
+          "placeholder": "000-000000-000",
+          "required": true
+        },
+        {
+          "db_field": "beneficiary_name",
+          "label": "Nombre del titular",
+          "type": "text",
+          "placeholder": "Juan Pérez",
+          "required": true
+        }
+      ]
+    }
+  },
+  {
+    "name": "BAC Credomatic",
+    "type": "BANK",
+    "country_code": "CR",
+    "metadata": {
+      "ui_requirements": [
+        {
+          "db_field": "account_identifier",
+          "label": "Número de cuenta",
+          "type": "text",
+          "placeholder": "0000000000",
+          "required": true
+        },
+        {
+          "db_field": "beneficiary_name",
+          "label": "Nombre del titular",
+          "type": "text",
+          "placeholder": "Carlos Sánchez",
+          "required": true
+        }
+      ]
+    }
+  },
+  {
+    "name": "Banco Industrial",
+    "type": "BANK",
+    "country_code": "GT",
+    "metadata": {
+      "ui_requirements": [
+        {
+          "db_field": "account_identifier",
+          "label": "Número de cuenta",
+          "type": "text",
+          "placeholder": "0000000000",
+          "required": true
+        },
+        {
+          "db_field": "beneficiary_name",
+          "label": "Nombre del titular",
+          "type": "text",
+          "placeholder": "Ana López",
+          "required": true
+        }
+      ]
+    }
+  }
+,
+  {
+    "name": "Banco Popular",
+    "type": "BANK",
+    "country_code": "CR",
+    "metadata": {
+      "ui_requirements": [
+        { "db_field": "account_identifier", "label": "Número de cuenta", "type": "text", "placeholder": "000-000000-000", "required": true },
+        { "db_field": "beneficiary_name", "label": "Nombre del titular", "type": "text", "placeholder": "Nombre Completo", "required": true }
+      ]
+    }
+  },
+  {
+    "name": "Scotiabank Costa Rica",
+    "type": "BANK",
+    "country_code": "CR",
+    "metadata": {
+      "ui_requirements": [
+        { "db_field": "account_identifier", "label": "Número de cuenta", "type": "text", "placeholder": "000-000000-000", "required": true },
+        { "db_field": "beneficiary_name", "label": "Nombre del titular", "type": "text", "placeholder": "Nombre Completo", "required": true }
+      ]
+    }
+  },
+  {
+    "name": "Banco Promerica",
+    "type": "BANK",
+    "country_code": "GT",
+    "metadata": {
+      "ui_requirements": [
+        { "db_field": "account_identifier", "label": "Número de cuenta", "type": "text", "placeholder": "0000000000", "required": true },
+        { "db_field": "beneficiary_name", "label": "Nombre del titular", "type": "text", "placeholder": "Nombre Completo", "required": true }
+      ]
+    }
+  },
+  {
+    "name": "Banco Ficohsa",
+    "type": "BANK",
+    "country_code": "HN",
+    "metadata": {
+      "ui_requirements": [
+        { "db_field": "account_identifier", "label": "Número de cuenta", "type": "text", "placeholder": "000-000000-000", "required": true },
+        { "db_field": "beneficiary_name", "label": "Nombre del titular", "type": "text", "placeholder": "Nombre Completo", "required": true }
+      ]
+    }
+  },
+  {
+    "name": "Banco Agrícola",
+    "type": "BANK",
+    "country_code": "SV",
+    "metadata": {
+      "ui_requirements": [
+        { "db_field": "account_identifier", "label": "Número de cuenta", "type": "text", "placeholder": "0000000000", "required": true },
+        { "db_field": "beneficiary_name", "label": "Nombre del titular", "type": "text", "placeholder": "Nombre Completo", "required": true }
+      ]
+    }
+  },
+  {
+    "name": "Banco de Desarrollo Agropecuario (BDA)",
+    "type": "BANK",
+    "country_code": "NI",
+    "metadata": {
+      "ui_requirements": [
+        { "db_field": "account_identifier", "label": "Número de cuenta", "type": "text", "placeholder": "0000000000", "required": true },
+        { "db_field": "beneficiary_name", "label": "Nombre del titular", "type": "text", "placeholder": "Nombre Completo", "required": true }
+      ]
+    }
+  },
+  {
+    "name": "Banpro (Banco de la Producción)",
+    "type": "BANK",
+    "country_code": "NI",
+    "metadata": {
+      "ui_requirements": [
+        { "db_field": "account_identifier", "label": "Número de cuenta", "type": "text", "placeholder": "0000000000", "required": true },
+        { "db_field": "beneficiary_name", "label": "Nombre del titular", "type": "text", "placeholder": "Nombre Completo", "required": true }
+      ]
+    }
+  },
+  {
+    "name": "Banco General",
+    "type": "BANK",
+    "country_code": "PA",
+    "metadata": {
+      "ui_requirements": [
+        { "db_field": "account_identifier", "label": "Número de cuenta/IBAN", "type": "text", "placeholder": "000-000000-000", "required": true },
+        { "db_field": "beneficiary_name", "label": "Nombre del titular", "type": "text", "placeholder": "Nombre Completo", "required": true }
+      ]
+    }
   }
 ]
