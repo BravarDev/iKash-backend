@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PaginationDto } from '../../common/pagination.dto';
 import { CreateUserDto } from './dto/create-users.dto';
 import { UpdateUserDto } from './dto/update-users.dto';
@@ -41,21 +46,27 @@ export class UsersService {
   }
 
   async setupAccount(userId: string, dto: SetupAccountDto) {
-    const { 
-      bankName, accountHolderName, accountNumber, 
-      providerId, accountIdentifier, identificationNumber, beneficiaryName, description,
-      ...profileData 
+    const {
+      bankName,
+      accountHolderName,
+      accountNumber,
+      providerId,
+      accountIdentifier,
+      identificationNumber,
+      beneficiaryName,
+      description,
+      ...profileData
     } = dto;
-    
+
     // Update user profile + set pendingAccountInfo = false
-    const updatedUser = await this.repo.update(userId, { 
-      ...profileData, 
-      pendingAccountInfo: false 
+    const updatedUser = await this.repo.update(userId, {
+      ...profileData,
+      pendingAccountInfo: false,
     });
 
     if (providerId && accountIdentifier) {
       const provider = await this.prisma.payment_provider.findUnique({
-        where: { provider_id: providerId }
+        where: { provider_id: providerId },
       });
 
       if (!provider) {
@@ -76,7 +87,10 @@ export class UsersService {
     }
 
     // Generate new JWT
-    const { access_token } = await this.authService.finalizeSetup(userId, updatedUser.publicKey);
+    const { access_token } = await this.authService.finalizeSetup(
+      userId,
+      updatedUser.publicKey,
+    );
 
     return {
       user: updatedUser,
@@ -104,8 +118,16 @@ export class UsersService {
     return item;
   }
 
-  update(id: string, dto: UpdateUserDto) {
-    const data: any = { ...dto };
+  update(id: string, dto: UpdateUserDto, authenticatedUserId?: string) {
+    if (!authenticatedUserId || authenticatedUserId !== id) {
+      throw new ForbiddenException({
+        statusCode: 403,
+        error: 'FORBIDDEN_USER_UPDATE',
+        message: 'You are not allowed to update this user resource.',
+      });
+    }
+
+    const data: Record<string, unknown> = { ...dto };
     if (dto.kycStatus) data.kycUpdatedAt = new Date();
     return this.repo.update(id, data);
   }
