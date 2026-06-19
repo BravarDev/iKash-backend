@@ -9,7 +9,7 @@ import {
   Networks,
   Operation,
   TransactionBuilder,
-} from 'stellar-sdk';
+} from '@stellar/stellar-sdk';
 
 type NetworkType = 'testnet' | 'public';
 
