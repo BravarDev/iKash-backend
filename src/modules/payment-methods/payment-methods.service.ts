@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
 import { PaginationDto } from '../../common/pagination.dto';
 import { CreatePaymentMethodDto } from './dto/create-payment-method.dto';
 import { UpdatePaymentMethodDto } from './dto/update-payment-method.dto';
 import { PaymentMethodsRepository } from './payment-methods.repository';
+import { AppException, ErrorCode } from '../../common/errors';
 
 @Injectable()
 export class PaymentMethodsService {
@@ -18,7 +19,13 @@ export class PaymentMethodsService {
 
   async get(id: string) {
     const item = await this.repo.findById(id);
-    if (!item) throw new NotFoundException();
+    if (!item) {
+      throw new AppException(
+        ErrorCode.PAYMENT_METHOD_NOT_FOUND,
+        `Payment method ${id} not found`,
+        HttpStatus.NOT_FOUND,
+      );
+    }
     return item;
   }
 

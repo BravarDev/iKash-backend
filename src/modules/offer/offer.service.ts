@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
 import { PaginationDto } from '../../common/pagination.dto';
 import { CreateOfferDto } from './dto/create-offer.dto';
 import { UpdateOfferDto } from './dto/update-offer.dto';
 import { OfferRepository } from './offer.repository';
+import { AppException, ErrorCode } from '../../common/errors';
 
 @Injectable()
 export class OfferService {
@@ -24,7 +25,13 @@ export class OfferService {
 
   async get(id: string) {
     const item = await this.repo.findById(id);
-    if (!item) throw new NotFoundException('Offer no encontrado');
+    if (!item) {
+      throw new AppException(
+        ErrorCode.OFFER_NOT_FOUND,
+        `Offer ${id} not found`,
+        HttpStatus.NOT_FOUND,
+      );
+    }
     return item;
   }
 

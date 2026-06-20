@@ -1,10 +1,12 @@
-import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { AppException, ErrorCode } from '../../common/errors';
 
 @Injectable()
 export class KycService {
   private readonly logger = new Logger(KycService.name);
-  private readonly diditApiUrl = process.env.DIDIT_API_URL || 'https://verification.didit.me/v3';
+  private readonly diditApiUrl =
+    process.env.DIDIT_API_URL || 'https://verification.didit.me/v3';
   private readonly diditApiKey = process.env.DIDIT_API_KEY;
   private readonly diditWorkflowId = process.env.DIDIT_WORKFLOW_ID;
 
@@ -13,15 +15,23 @@ export class KycService {
   async initializeSession(userId: string) {
     try {
       if (!this.diditApiKey) {
-        throw new Error('DIDIT_API_KEY is not configured');
+        throw new AppException(
+          ErrorCode.KYC_SESSION_FAILED,
+          'DIDIT_API_KEY is not configured',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
       }
 
       if (!this.diditWorkflowId) {
-        throw new Error('DIDIT_WORKFLOW_ID is not configured');
+        throw new AppException(
+          ErrorCode.KYC_SESSION_FAILED,
+          'DIDIT_WORKFLOW_ID is not configured',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
       }
 
       this.logger.log(`Initializing KYC session for user: ${userId}`);
-      
+
       const response = await fetch(`${this.diditApiUrl}/session/`, {
         method: 'POST',
         headers: {
@@ -38,50 +48,66 @@ export class KycService {
       if (!response.ok) {
         const errorData = await response.text();
         this.logger.error(`Error from Didit API: ${errorData}`);
-        throw new Error('Failed to create Didit session');
+        throw new AppException(
+          ErrorCode.KYC_SESSION_FAILED,
+          'Failed to create KYC session with the verification provider.',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
       }
 
       const data = await response.json();
       return { sessionUrl: data.url };
     } catch (error) {
+      // Re-throw AppExceptions directly; wrap anything else
+      if (error instanceof AppException) throw error;
+
       this.logger.error(`Error initializing KYC session: ${error.message}`);
-      throw new InternalServerErrorException('Could not initialize KYC session');
+      throw new AppException(
+        ErrorCode.KYC_SESSION_FAILED,
+        'Could not initialize KYC session.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
   async processWebhookEvent(payload: any) {
-    // Log full payload for debugging
     this.logger.log(`[KYC WEBHOOK] Full payload: ${JSON.stringify(payload)}`);
 
-    // Didit sends vendor_data and status at the top level of the webhook payload.
-    const userId = payload?.vendor_data 
-      || payload?.verification_session?.vendor_data 
-      || payload?.session?.vendor_data
-      || payload?.data?.vendor_data;
+    const userId =
+      payload?.vendor_data ||
+      payload?.verification_session?.vendor_data ||
+      payload?.session?.vendor_data ||
+      payload?.data?.vendor_data;
 
-    const rawStatus = payload?.status
-      || payload?.verification_session?.status
-      || payload?.session?.status
-      || payload?.data?.status;
+    const rawStatus =
+      payload?.status ||
+      payload?.verification_session?.status ||
+      payload?.session?.status ||
+      payload?.data?.status;
 
-    this.logger.log(`[KYC WEBHOOK] Extracted userId=${userId}, rawStatus=${rawStatus}`);
+    this.logger.log(
+      `[KYC WEBHOOK] Extracted userId=${userId}, rawStatus=${rawStatus}`,
+    );
 
     if (!userId) {
-      this.logger.warn(`[KYC WEBHOOK] No vendor_data found in payload keys: ${Object.keys(payload || {}).join(', ')}`);
+      this.logger.warn(
+        `[KYC WEBHOOK] No vendor_data found in payload keys: ${Object.keys(payload || {}).join(', ')}`,
+      );
       return;
     }
 
-    // Didit test webhooks send non-UUID mock data like "test-vendor-data-123"
-    // Validate UUID to prevent Prisma from crashing.
-    const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+    // Didit test webhooks send non-UUID mock data — skip those to avoid Prisma errors
+    const uuidRegex =
+      /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
     if (!uuidRegex.test(userId)) {
-      this.logger.warn(`[KYC WEBHOOK] Skipping: vendor_data '${userId}' is not a valid UUID`);
+      this.logger.warn(
+        `[KYC WEBHOOK] Skipping: vendor_data '${userId}' is not a valid UUID`,
+      );
       return;
     }
 
-    // Map Didit's string statuses to our internal enum
-    // Didit sends capitalized: "Approved", "Declined", "In Review", "Not Started", etc.
-    const statusLower = rawStatus?.toLowerCase().trim().replace(/ +/g, '_') || '';
+    const statusLower =
+      rawStatus?.toLowerCase().trim().replace(/ +/g, '_') || '';
     this.logger.log(`[KYC WEBHOOK] Normalized status: '${statusLower}'`);
 
     let kycStatus: any = 'pending';
@@ -110,14 +136,18 @@ export class KycService {
     try {
       const updatedUser = await this.prisma.appUser.update({
         where: { userId },
-        data: { 
+        data: {
           kycStatus,
-          kycUpdatedAt: new Date()
+          kycUpdatedAt: new Date(),
         },
       });
-      this.logger.log(`[KYC WEBHOOK] ✅ Updated user ${userId} → kycStatus: ${updatedUser.kycStatus}`);
+      this.logger.log(
+        `[KYC WEBHOOK] ✅ Updated user ${userId} → kycStatus: ${updatedUser.kycStatus}`,
+      );
     } catch (error) {
-      this.logger.error(`[KYC WEBHOOK] ❌ Failed to update user ${userId}: ${error.message}`);
+      this.logger.error(
+        `[KYC WEBHOOK] ❌ Failed to update user ${userId}: ${error.message}`,
+      );
     }
   }
 }

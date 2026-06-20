@@ -1,5 +1,6 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
+import { CanActivate, ExecutionContext, HttpStatus, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AppException, ErrorCode } from './errors';
 
 @Injectable()
 export class KycVerifiedGuard implements CanActivate {
@@ -10,7 +11,11 @@ export class KycVerifiedGuard implements CanActivate {
     const userPayload = request.user;
 
     if (!userPayload || !userPayload.publicKey) {
-      throw new ForbiddenException('Authentication required');
+      throw new AppException(
+        ErrorCode.UNAUTHORIZED_ACTION,
+        'Authentication required',
+        HttpStatus.FORBIDDEN,
+      );
     }
 
     const user = await this.prisma.appUser.findUnique({
@@ -19,7 +24,11 @@ export class KycVerifiedGuard implements CanActivate {
     });
 
     if (!user || user.kycStatus !== 'approved') {
-      throw new ForbiddenException('KYC verification required to perform this action');
+      throw new AppException(
+        ErrorCode.KYC_REQUIRED,
+        'KYC verification required to perform this action',
+        HttpStatus.FORBIDDEN,
+      );
     }
 
     return true;

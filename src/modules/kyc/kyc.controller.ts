@@ -1,8 +1,21 @@
-import { Controller, Post, Body, Headers, UnauthorizedException, HttpCode, HttpStatus, InternalServerErrorException, Req, Logger, type RawBodyRequest, Get, Query } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Headers,
+  HttpCode,
+  HttpStatus,
+  Req,
+  Logger,
+  Get,
+  Query,
+  type RawBodyRequest,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import { KycService } from './kyc.service';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { AppException, ErrorCode } from '../../common/errors';
 
 @Controller('kyc')
 export class KycController {
@@ -17,19 +30,27 @@ export class KycController {
   @Post('start')
   async startKyc(@Body('userId') userId: string) {
     if (!userId) {
-      throw new UnauthorizedException('User ID is required');
+      throw new AppException(
+        ErrorCode.MISSING_USER_ID,
+        'User ID is required',
+        HttpStatus.BAD_REQUEST,
+      );
     }
     return this.kycService.initializeSession(userId);
   }
 
   /**
-   * Lightweight polling endpoint: frontend calls this after returning from Didit
-   * to get the latest kycStatus without waiting for the webhook.
+   * Lightweight polling endpoint — frontend calls this after returning from
+   * Didit to get the latest kycStatus without waiting for the webhook.
    */
   @Get('status')
   async getKycStatus(@Query('userId') userId: string) {
     if (!userId) {
-      throw new UnauthorizedException('User ID is required');
+      throw new AppException(
+        ErrorCode.MISSING_USER_ID,
+        'User ID is required',
+        HttpStatus.BAD_REQUEST,
+      );
     }
     const user = await this.prisma.appUser.findUnique({
       where: { userId },
@@ -50,17 +71,27 @@ export class KycController {
     @Req() req: RawBodyRequest<Request>,
     @Body() payload: any,
   ) {
-    this.logger.log(`[WEBHOOK] Received webhook. Headers: x-signature-v2=${!!signatureV2}, x-signature=${!!signatureV1}, x-signature-simple=${!!signatureSimple}`);
+    this.logger.log(
+      `[WEBHOOK] Received webhook. Headers: x-signature-v2=${!!signatureV2}, x-signature=${!!signatureV1}, x-signature-simple=${!!signatureSimple}`,
+    );
 
     if (!this.webhookSecret) {
       this.logger.error('[WEBHOOK] DIDIT_WEBHOOK_SECRET is not configured');
-      throw new InternalServerErrorException('DIDIT_WEBHOOK_SECRET is not configured');
+      throw new AppException(
+        ErrorCode.KYC_WEBHOOK_SECRET_MISSING,
+        'DIDIT_WEBHOOK_SECRET is not configured',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
 
     const rawBodyBuffer = req.rawBody;
     if (!rawBodyBuffer) {
       this.logger.error('[WEBHOOK] Missing raw HTTP body');
-      throw new InternalServerErrorException('Missing raw HTTP body. Ensure { rawBody: true } is set in main.ts');
+      throw new AppException(
+        ErrorCode.KYC_WEBHOOK_MISSING_BODY,
+        'Missing raw HTTP body. Ensure { rawBody: true } is set in main.ts.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
 
     // Try V2 signature first, then V1
@@ -72,33 +103,44 @@ export class KycController {
         .digest('hex');
 
       if (sigToVerify !== expectedSignature) {
-        this.logger.warn(`[WEBHOOK] Signature mismatch. Expected=${expectedSignature.slice(0, 16)}... Got=${sigToVerify.slice(0, 16)}...`);
-        throw new UnauthorizedException('Invalid webhook signature');
+        this.logger.warn(
+          `[WEBHOOK] Signature mismatch. Expected=${expectedSignature.slice(0, 16)}... Got=${sigToVerify.slice(0, 16)}...`,
+        );
+        throw new AppException(
+          ErrorCode.KYC_WEBHOOK_INVALID_SIGNATURE,
+          'Invalid webhook signature',
+          HttpStatus.UNAUTHORIZED,
+        );
       }
       this.logger.log('[WEBHOOK] Signature verified ✅');
     } else if (signatureSimple) {
-      // Fallback: X-Signature-Simple verifies core fields only
       const sessionId = payload?.session_id || '';
       const status = payload?.status || '';
       const webhookType = payload?.webhook_type || '';
-      const timestamp = ''; // Didit Simple doesn't require timestamp in some versions
-      const simplePayload = `${timestamp}:${sessionId}:${status}:${webhookType}`;
+      const simplePayload = `:${sessionId}:${status}:${webhookType}`;
       const expectedSimple = crypto
         .createHmac('sha256', this.webhookSecret)
         .update(simplePayload)
         .digest('hex');
 
       if (signatureSimple !== expectedSimple) {
-        this.logger.warn(`[WEBHOOK] Simple signature mismatch`);
-        throw new UnauthorizedException('Invalid webhook signature');
+        this.logger.warn('[WEBHOOK] Simple signature mismatch');
+        throw new AppException(
+          ErrorCode.KYC_WEBHOOK_INVALID_SIGNATURE,
+          'Invalid webhook signature',
+          HttpStatus.UNAUTHORIZED,
+        );
       }
       this.logger.log('[WEBHOOK] Simple signature verified ✅');
     } else {
       this.logger.warn('[WEBHOOK] No signature header found');
-      throw new UnauthorizedException('Missing X-Signature header');
+      throw new AppException(
+        ErrorCode.KYC_WEBHOOK_INVALID_SIGNATURE,
+        'Missing X-Signature header',
+        HttpStatus.UNAUTHORIZED,
+      );
     }
 
-    // Process synchronously — it's fast (single DB update)
     await this.kycService.processWebhookEvent(payload);
 
     return { received: true };

@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   Asset,
@@ -10,6 +10,7 @@ import {
   Operation,
   TransactionBuilder,
 } from '@stellar/stellar-sdk';
+import { AppException, ErrorCode } from '../../common/errors';
 
 type NetworkType = 'testnet' | 'public';
 
@@ -73,29 +74,40 @@ export class StellarService {
         asset_issuer: op.asset_issuer ?? null,
         from: op.from ?? op.funder ?? null,
         to: op.to ?? op.account ?? null,
-        direction: (op.to === publicKey || op.account === publicKey) ? 'received' : 'sent',
+        direction:
+          op.to === publicKey || op.account === publicKey ? 'received' : 'sent',
       }));
     } catch (err: any) {
       if (err?.response?.status === 404) {
-        throw new NotFoundException(`Account ${publicKey} not found on Stellar network.`);
+        throw new AppException(
+          ErrorCode.STELLAR_ACCOUNT_NOT_FOUND,
+          `Account ${publicKey} not found on Stellar network.`,
+          HttpStatus.NOT_FOUND,
+        );
       }
-      throw new InternalServerErrorException('Failed to fetch transactions from Stellar network.');
+      throw new AppException(
+        ErrorCode.STELLAR_TRANSACTION_FAILED,
+        'Failed to fetch transactions from Stellar network.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
   /**
-   * Envía un pago firmado por tu backend.
-   * Para producción: mejor firmar del lado cliente o custodiar secreto con KMS/HSM.
+   * Sends a payment signed by the backend wallet.
+   * For production, prefer client-side signing or KMS/HSM custody.
    */
   async sendPayment(params: {
     destination: string;
-    amount: string; // "1.5"
+    amount: string;
     memo?: string;
-    asset?: { code: string; issuer?: string }; // si no viene => XLM
+    asset?: { code: string; issuer?: string };
   }) {
     if (!this.signerSecret) {
-      throw new BadRequestException(
-        'Falta STELLAR_SIGNER_SECRET para firmar la transacción.',
+      throw new AppException(
+        ErrorCode.MISSING_SIGNER_SECRET,
+        'STELLAR_SIGNER_SECRET is not configured for signing transactions.',
+        HttpStatus.BAD_REQUEST,
       );
     }
 
@@ -105,13 +117,9 @@ export class StellarService {
     const sourceKeypair = Keypair.fromSecret(this.signerSecret);
     const sourcePublicKey = sourceKeypair.publicKey();
 
-    // Cargar cuenta origen
     const account = await this.server.loadAccount(sourcePublicKey);
-
-    // Asset (XLM o token)
     const asset = this.buildAsset(params.asset);
 
-    // Construcción TX
     let builder = new TransactionBuilder(account, {
       fee: String(BASE_FEE),
       networkPassphrase: this.networkPassphrase,
@@ -124,13 +132,10 @@ export class StellarService {
     );
 
     if (params.memo) {
-      // Memo text: límite aprox 28 bytes
       builder = builder.addMemo(Memo.text(params.memo));
     }
 
     const tx = builder.setTimeout(60).build();
-
-    // Firmar + enviar
     tx.sign(sourceKeypair);
     const res = await this.server.submitTransaction(tx);
 
@@ -145,8 +150,10 @@ export class StellarService {
     if (!asset || asset.code === 'XLM') return Asset.native();
 
     if (!asset.issuer) {
-      throw new BadRequestException(
-        'Para assets no nativos debes enviar issuer (ej: USDC issuer).',
+      throw new AppException(
+        ErrorCode.MISSING_ASSET_ISSUER,
+        'Non-native assets require an issuer address (e.g. the USDC issuer).',
+        HttpStatus.BAD_REQUEST,
       );
     }
 
@@ -155,16 +162,22 @@ export class StellarService {
   }
 
   private assertPublicKey(key: string) {
-    // validación simple (evita dependencias extra)
     if (!key || key[0] !== 'G' || key.length < 50) {
-      throw new BadRequestException('Public key inválida (debe iniciar con G...).');
+      throw new AppException(
+        ErrorCode.INVALID_STELLAR_ADDRESS,
+        'Invalid public key. Must start with "G" and be at least 50 characters.',
+        HttpStatus.BAD_REQUEST,
+      );
     }
   }
 
   private assertAmount(amount: string) {
-    // Stellar usa hasta 7 decimales, y debe ser > 0
     if (!/^\d+(\.\d{1,7})?$/.test(amount) || Number(amount) <= 0) {
-      throw new BadRequestException('Amount inválido. Ej: "1" o "0.1234567"');
+      throw new AppException(
+        ErrorCode.INVALID_AMOUNT,
+        'Invalid amount. Use a positive number with up to 7 decimal places (e.g. "1" or "0.1234567").',
+        HttpStatus.BAD_REQUEST,
+      );
     }
   }
 }
