@@ -10,20 +10,13 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { Request } from 'express';
 import { PaginationDto } from '../../common/pagination.dto';
+import type { AuthenticatedRequest } from '../../lib/types/auth';
 import { CreateUserDto } from './dto/create-users.dto';
 import { UpdateUserDto } from './dto/update-users.dto';
 import { UsersService } from './users.service';
 import { SetupAccountDto } from './dto/setup-account.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-
-export type AuthenticatedRequest = Request & {
-  user?: {
-    userId?: string;
-    id?: string;
-  };
-};
 
 @Controller('users')
 export class UsersController {

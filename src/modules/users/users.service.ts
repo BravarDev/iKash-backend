@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { PaginationDto } from '../../common/pagination.dto';
@@ -14,6 +15,8 @@ import { AuthService } from '../auth/auth.service';
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     private readonly repo: UsersRepository,
     private readonly prisma: PrismaService,
@@ -120,6 +123,12 @@ export class UsersService {
 
   update(id: string, dto: UpdateUserDto, authenticatedUserId?: string) {
     if (!authenticatedUserId || authenticatedUserId !== id) {
+      this.logger.warn({
+        message: 'Blocked unauthorized user profile update attempt',
+        targetUserId: id,
+        actorUserId: authenticatedUserId ?? null,
+      });
+
       throw new ForbiddenException({
         statusCode: 403,
         error: 'FORBIDDEN_USER_UPDATE',
