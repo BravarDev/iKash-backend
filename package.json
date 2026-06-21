@@ -85,5 +85,8 @@
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
+  },
+  "overrides": {
+    "debug": ">=4.3.1"
   }
 }
