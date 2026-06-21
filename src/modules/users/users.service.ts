@@ -1,4 +1,10 @@
-import { HttpStatus, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { PaginationDto } from '../../common/pagination.dto';
 import { CreateUserDto } from './dto/create-users.dto';
 import { UpdateUserDto } from './dto/update-users.dto';
@@ -10,6 +16,8 @@ import { AppException, ErrorCode } from '../../common/errors';
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     private readonly repo: UsersRepository,
     private readonly prisma: PrismaService,
@@ -63,7 +71,7 @@ export class UsersService {
       ...profileData
     } = dto;
 
-    // Update user profile + clear pendingAccountInfo flag
+    // Update user profile + set pendingAccountInfo = false
     const updatedUser = await this.repo.update(userId, {
       ...profileData,
       pendingAccountInfo: false,
@@ -95,7 +103,7 @@ export class UsersService {
       });
     }
 
-    // Issue new JWT with completed-setup claim
+    // Generate new JWT
     const { access_token } = await this.authService.finalizeSetup(
       userId,
       updatedUser.publicKey,
@@ -139,8 +147,22 @@ export class UsersService {
     return item;
   }
 
-  update(id: string, dto: UpdateUserDto) {
-    const data: any = { ...dto };
+  update(id: string, dto: UpdateUserDto, authenticatedUserId?: string) {
+    if (!authenticatedUserId || authenticatedUserId !== id) {
+      this.logger.warn({
+        message: 'Blocked unauthorized user profile update attempt',
+        targetUserId: id,
+        actorUserId: authenticatedUserId ?? null,
+      });
+
+      throw new ForbiddenException({
+        statusCode: 403,
+        error: 'FORBIDDEN_USER_UPDATE',
+        message: 'You are not allowed to update this user resource.',
+      });
+    }
+
+    const data: Record<string, unknown> = { ...dto };
     if (dto.kycStatus) data.kycUpdatedAt = new Date();
     return this.repo.update(id, data);
   }
