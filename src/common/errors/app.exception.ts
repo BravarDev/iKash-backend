@@ -37,6 +37,9 @@ export function errorCodeToHttpStatus(code: ErrorCode): HttpStatus {
     [ErrorCode.MISSING_ASSET_ISSUER]: HttpStatus.BAD_REQUEST,
     [ErrorCode.VALIDATION_ERROR]: HttpStatus.BAD_REQUEST,
     [ErrorCode.MISSING_PAYMENT_PROVIDER]: HttpStatus.BAD_REQUEST,
+    [ErrorCode.SELF_SEND]: HttpStatus.BAD_REQUEST,
+    [ErrorCode.AMOUNT_TOO_SMALL]: HttpStatus.BAD_REQUEST,
+    [ErrorCode.MISSING_FEE_COLLECTOR]: HttpStatus.BAD_REQUEST,
 
     // ── 401 Unauthorized ─────────────────────────────────────────────
     [ErrorCode.KYC_WEBHOOK_INVALID_SIGNATURE]: HttpStatus.UNAUTHORIZED,
@@ -55,6 +58,7 @@ export function errorCodeToHttpStatus(code: ErrorCode): HttpStatus {
     [ErrorCode.CHAT_MESSAGE_NOT_FOUND]: HttpStatus.NOT_FOUND,
     [ErrorCode.STELLAR_ACCOUNT_NOT_FOUND]: HttpStatus.NOT_FOUND,
     [ErrorCode.RESOURCE_NOT_FOUND]: HttpStatus.NOT_FOUND,
+    [ErrorCode.INVALID_RECIPIENT]: HttpStatus.NOT_FOUND,
 
     // ── 500 Internal Server Error ─────────────────────────────────────
     [ErrorCode.KYC_SESSION_FAILED]: HttpStatus.INTERNAL_SERVER_ERROR,

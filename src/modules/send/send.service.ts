@@ -1,12 +1,9 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { StellarService } from '../stellar/stellar.service';
 import { UsersRepository } from '../users/users.repository';
 import { AMOUNT_REGEX } from '../../lib/constants/regex';
+import { AppException, ErrorCode } from '../../common/errors';
 
 const STROOPS_PER_UNIT = 10_000_000n; // USDC uses 7 decimals
 
@@ -41,17 +38,24 @@ export class SendService {
     const { address, alias } = await this.resolve(recipient);
 
     if (address === sourcePublicKey) {
-      throw new BadRequestException('You cannot send funds to yourself.');
+      throw new AppException(
+        ErrorCode.SELF_SEND,
+        'You cannot send funds to yourself.',
+      );
     }
 
     const amountStroops = this.toStroops(amount);
     if (amountStroops <= 0n) {
-      throw new BadRequestException('The amount must be greater than 0.');
+      throw new AppException(
+        ErrorCode.AMOUNT_TOO_SMALL,
+        'The amount must be greater than 0.',
+      );
     }
 
     const feeStroops = (amountStroops * BigInt(this.feeBps())) / 10_000n;
     if (feeStroops <= 0n) {
-      throw new BadRequestException(
+      throw new AppException(
+        ErrorCode.AMOUNT_TOO_SMALL,
         'The amount is too small to calculate the 0.3% fee.',
       );
     }
@@ -85,7 +89,7 @@ export class SendService {
     return this.stellar.submitSignedXdr(signedXdr);
   }
 
-  // --- helpers ---
+  // ─── Helpers ───────────────────────────────────────────────────────────────
 
   /** Resolves a recipient (alias or G... address) to { address, alias }. */
   private async resolve(
@@ -100,7 +104,8 @@ export class SendService {
 
     const user = await this.users.findByAlias(value);
     if (!user) {
-      throw new NotFoundException(
+      throw new AppException(
+        ErrorCode.INVALID_RECIPIENT,
         `No wallet was found for the alias "${value}".`,
       );
     }
@@ -119,14 +124,15 @@ export class SendService {
     if (!Number.isFinite(percent) || percent < 0) {
       return 30;
     }
-    return Math.round(percent * 100); // 0.3% -> 30 bps
+    return Math.round(percent * 100); // 0.3% → 30 bps
   }
 
   private feeCollector(): string {
     const address = this.config.get<string>('IKASH_TREASURY_ADDRESS');
     if (!address) {
-      throw new BadRequestException(
-        'IKASH_TREASURY_ADDRESS is missing to charge the fee.',
+      throw new AppException(
+        ErrorCode.MISSING_FEE_COLLECTOR,
+        'IKASH_TREASURY_ADDRESS is not configured for fee collection.',
       );
     }
     return address;
@@ -135,7 +141,10 @@ export class SendService {
   /** Converts a decimal amount (string) to stroops (BigInt), 7 decimals. */
   private toStroops(amount: string): bigint {
     if (!AMOUNT_REGEX.test(amount)) {
-      throw new BadRequestException('Invalid amount. e.g. "1" or "0.1234567"');
+      throw new AppException(
+        ErrorCode.INVALID_AMOUNT,
+        'Invalid amount. Use a positive number with up to 7 decimal places (e.g. "1" or "0.1234567").',
+      );
     }
     const [intPart, decPart = ''] = amount.split('.');
     const decPadded = decPart.padEnd(7, '0');

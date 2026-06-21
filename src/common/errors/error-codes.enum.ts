@@ -58,6 +58,12 @@ export enum ErrorCode {
   KYC_WEBHOOK_SECRET_MISSING = 'KYC_WEBHOOK_SECRET_MISSING',
   MISSING_USER_ID = 'MISSING_USER_ID',
 
+  // ── Send / Crypto Transfer ───────────────────────────────────────────
+  SELF_SEND = 'SELF_SEND',
+  INVALID_RECIPIENT = 'INVALID_RECIPIENT',
+  AMOUNT_TOO_SMALL = 'AMOUNT_TOO_SMALL',
+  MISSING_FEE_COLLECTOR = 'MISSING_FEE_COLLECTOR',
+
   // ── General ──────────────────────────────────────────────────────────
   VALIDATION_ERROR = 'VALIDATION_ERROR',
   RESOURCE_NOT_FOUND = 'RESOURCE_NOT_FOUND',
