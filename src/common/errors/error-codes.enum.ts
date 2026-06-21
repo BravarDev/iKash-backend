@@ -1,0 +1,71 @@
+/**
+ * Centralized error codes for all iKash backend errors.
+ * These stable uppercase identifiers allow the frontend to branch on
+ * `error.error` without parsing human-readable message strings.
+ */
+export enum ErrorCode {
+  // ── Auth / Wallet ──────────────────────────────────────────────────
+  INVALID_WALLET = 'INVALID_WALLET',
+  MISSING_PUBLIC_KEY = 'MISSING_PUBLIC_KEY',
+  UNAUTHORIZED_ACTION = 'UNAUTHORIZED_ACTION',
+  KYC_REQUIRED = 'KYC_REQUIRED',
+
+  // ── User ────────────────────────────────────────────────────────────
+  USER_NOT_FOUND = 'USER_NOT_FOUND',
+  USER_ALREADY_EXISTS = 'USER_ALREADY_EXISTS',
+  ALIAS_TAKEN = 'ALIAS_TAKEN',
+  INVALID_EMAIL = 'INVALID_EMAIL',
+  MISSING_EMAIL = 'MISSING_EMAIL',
+
+  // ── Offer ────────────────────────────────────────────────────────────
+  OFFER_NOT_FOUND = 'OFFER_NOT_FOUND',
+
+  // ── Order ────────────────────────────────────────────────────────────
+  ORDER_NOT_FOUND = 'ORDER_NOT_FOUND',
+  INVALID_ORDER_STATUS = 'INVALID_ORDER_STATUS',
+
+  // ── Escrow ───────────────────────────────────────────────────────────
+  ESCROW_NOT_FOUND = 'ESCROW_NOT_FOUND',
+  ESCROW_ALREADY_EXISTS = 'ESCROW_ALREADY_EXISTS',
+  ESCROW_NOT_INITIALIZED = 'ESCROW_NOT_INITIALIZED',
+  ESCROW_NO_CONTRACT = 'ESCROW_NO_CONTRACT',
+  ESCROW_CREATION_FAILED = 'ESCROW_CREATION_FAILED',
+  ESCROW_INVALID_STATUS = 'ESCROW_INVALID_STATUS',
+  ESCROW_SYNC_FAILED = 'ESCROW_SYNC_FAILED',
+  ESCROW_APPROVE_FAILED = 'ESCROW_APPROVE_FAILED',
+  UNSUPPORTED_ASSET = 'UNSUPPORTED_ASSET',
+
+  // ── Payment ──────────────────────────────────────────────────────────
+  PAYMENT_METHOD_NOT_FOUND = 'PAYMENT_METHOD_NOT_FOUND',
+  PAYMENT_PROVIDER_NOT_FOUND = 'PAYMENT_PROVIDER_NOT_FOUND',
+  MISSING_PAYMENT_PROVIDER = 'MISSING_PAYMENT_PROVIDER',
+
+  // ── Chat ─────────────────────────────────────────────────────────────
+  CHAT_MESSAGE_NOT_FOUND = 'CHAT_MESSAGE_NOT_FOUND',
+
+  // ── Stellar ──────────────────────────────────────────────────────────
+  INVALID_STELLAR_ADDRESS = 'INVALID_STELLAR_ADDRESS',
+  INVALID_AMOUNT = 'INVALID_AMOUNT',
+  STELLAR_ACCOUNT_NOT_FOUND = 'STELLAR_ACCOUNT_NOT_FOUND',
+  STELLAR_TRANSACTION_FAILED = 'STELLAR_TRANSACTION_FAILED',
+  MISSING_SIGNER_SECRET = 'MISSING_SIGNER_SECRET',
+  MISSING_ASSET_ISSUER = 'MISSING_ASSET_ISSUER',
+
+  // ── KYC ──────────────────────────────────────────────────────────────
+  KYC_SESSION_FAILED = 'KYC_SESSION_FAILED',
+  KYC_WEBHOOK_INVALID_SIGNATURE = 'KYC_WEBHOOK_INVALID_SIGNATURE',
+  KYC_WEBHOOK_MISSING_BODY = 'KYC_WEBHOOK_MISSING_BODY',
+  KYC_WEBHOOK_SECRET_MISSING = 'KYC_WEBHOOK_SECRET_MISSING',
+  MISSING_USER_ID = 'MISSING_USER_ID',
+
+  // ── Send / Crypto Transfer ───────────────────────────────────────────
+  SELF_SEND = 'SELF_SEND',
+  INVALID_RECIPIENT = 'INVALID_RECIPIENT',
+  AMOUNT_TOO_SMALL = 'AMOUNT_TOO_SMALL',
+  MISSING_FEE_COLLECTOR = 'MISSING_FEE_COLLECTOR',
+
+  // ── General ──────────────────────────────────────────────────────────
+  VALIDATION_ERROR = 'VALIDATION_ERROR',
+  RESOURCE_NOT_FOUND = 'RESOURCE_NOT_FOUND',
+  INTERNAL_SERVER_ERROR = 'INTERNAL_SERVER_ERROR',
+}

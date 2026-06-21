@@ -1,10 +1,11 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PaginationDto } from '../../common/pagination.dto';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { OrderRepository } from './order.repository';
 import { EscrowService } from '../escrow/escrow.service';
+import { AppException, ErrorCode } from '../../common/errors';
 
 @Injectable()
 export class OrderService {
@@ -22,15 +23,16 @@ export class OrderService {
    * 2. Call EscrowService.deployEscrowToChain() — interacts ONLY with TW API.
    *    If this fails the method throws and NO database record is created.
    * 3. Persist Order + EscrowOnChain in a single DB transaction.
-   * 4. Return the order data together with the unsigned fund XDR so the
-   *    frontend can prompt the seller to sign.
+   * 4. Return the order data with the unsigned fund XDR so the frontend can
+   *    prompt the seller to sign.
    */
   async create(dto: CreateOrderDto) {
     const orderId = randomUUID();
 
-    this.logger.log(`Creating order ${orderId} — deploying escrow to chain first…`);
+    this.logger.log(
+      `Creating order ${orderId} — deploying escrow to chain first…`,
+    );
 
-    // ── Step 1: Deploy escrow on Trustless Work (no DB writes) ───────────
     const { contractId, unsignedFundTransaction } =
       await this.escrowService.deployEscrowToChain(orderId, {
         sellerAddress: dto.sellerAddress,
@@ -40,9 +42,10 @@ export class OrderService {
         title: dto.title ?? `Order ${orderId}`,
       });
 
-    this.logger.log(`Escrow deployed (contract=${contractId}). Persisting order + escrow in DB…`);
+    this.logger.log(
+      `Escrow deployed (contract=${contractId}). Persisting order + escrow in DB…`,
+    );
 
-    // ── Step 2: Persist Order + EscrowOnChain atomically ────────────────
     const data: any = {
       orderId,
       offerId: dto.offerId,
@@ -64,12 +67,7 @@ export class OrderService {
 
     this.logger.log(`Order ${orderId} and escrow persisted successfully.`);
 
-    // ── Return combined response ─────────────────────────────────────────
-    return {
-      ...order,
-      contractId,
-      unsignedFundTransaction,
-    };
+    return { ...order, contractId, unsignedFundTransaction };
   }
 
   list(p: PaginationDto, q: any) {
@@ -87,7 +85,9 @@ export class OrderService {
 
   async get(id: string) {
     const item = await this.repo.findById(id);
-    if (!item) throw new NotFoundException('Order no encontrado');
+    if (!item) {
+      throw new AppException(ErrorCode.ORDER_NOT_FOUND, `Order ${id} not found`);
+    }
     return item;
   }
 
