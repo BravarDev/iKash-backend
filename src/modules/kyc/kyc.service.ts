@@ -1,4 +1,4 @@
-import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AppException, ErrorCode } from '../../common/errors';
 
@@ -18,7 +18,6 @@ export class KycService {
         throw new AppException(
           ErrorCode.KYC_SESSION_FAILED,
           'DIDIT_API_KEY is not configured',
-          HttpStatus.INTERNAL_SERVER_ERROR,
         );
       }
 
@@ -26,7 +25,6 @@ export class KycService {
         throw new AppException(
           ErrorCode.KYC_SESSION_FAILED,
           'DIDIT_WORKFLOW_ID is not configured',
-          HttpStatus.INTERNAL_SERVER_ERROR,
         );
       }
 
@@ -51,7 +49,6 @@ export class KycService {
         throw new AppException(
           ErrorCode.KYC_SESSION_FAILED,
           'Failed to create KYC session with the verification provider.',
-          HttpStatus.INTERNAL_SERVER_ERROR,
         );
       }
 
@@ -65,7 +62,6 @@ export class KycService {
       throw new AppException(
         ErrorCode.KYC_SESSION_FAILED,
         'Could not initialize KYC session.',
-        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -96,7 +92,6 @@ export class KycService {
       return;
     }
 
-    // Didit test webhooks send non-UUID mock data — skip those to avoid Prisma errors
     const uuidRegex =
       /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
     if (!uuidRegex.test(userId)) {
@@ -111,35 +106,21 @@ export class KycService {
     this.logger.log(`[KYC WEBHOOK] Normalized status: '${statusLower}'`);
 
     let kycStatus: any = 'pending';
-    if (statusLower === 'approved') {
-      kycStatus = 'approved';
-    } else if (statusLower === 'declined' || statusLower === 'rejected') {
-      kycStatus = 'rejected';
-    } else if (statusLower === 'review' || statusLower === 'in_review') {
-      kycStatus = 'in_review';
-    } else if (statusLower === 'expired') {
-      kycStatus = 'expired';
-    } else if (statusLower === 'kyc_expired') {
-      kycStatus = 'kyc_expired';
-    } else if (statusLower === 'abandoned') {
-      kycStatus = 'abandoned';
-    } else if (statusLower === 'resubmitted') {
-      kycStatus = 'resubmitted';
-    } else if (statusLower === 'not_started') {
-      kycStatus = 'not_started';
-    } else if (statusLower === 'in_progress') {
-      kycStatus = 'in_progress';
-    } else {
-      kycStatus = 'pending';
-    }
+    if (statusLower === 'approved') kycStatus = 'approved';
+    else if (statusLower === 'declined' || statusLower === 'rejected') kycStatus = 'rejected';
+    else if (statusLower === 'review' || statusLower === 'in_review') kycStatus = 'in_review';
+    else if (statusLower === 'expired') kycStatus = 'expired';
+    else if (statusLower === 'kyc_expired') kycStatus = 'kyc_expired';
+    else if (statusLower === 'abandoned') kycStatus = 'abandoned';
+    else if (statusLower === 'resubmitted') kycStatus = 'resubmitted';
+    else if (statusLower === 'not_started') kycStatus = 'not_started';
+    else if (statusLower === 'in_progress') kycStatus = 'in_progress';
+    else kycStatus = 'pending';
 
     try {
       const updatedUser = await this.prisma.appUser.update({
         where: { userId },
-        data: {
-          kycStatus,
-          kycUpdatedAt: new Date(),
-        },
+        data: { kycStatus, kycUpdatedAt: new Date() },
       });
       this.logger.log(
         `[KYC WEBHOOK] ✅ Updated user ${userId} → kycStatus: ${updatedUser.kycStatus}`,

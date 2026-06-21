@@ -1,4 +1,4 @@
-import { Controller, Post, Body, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { AppException, ErrorCode } from '../../common/errors';
 
@@ -13,11 +13,7 @@ export class AuthController {
   @Post('login')
   async login(@Body('publicKey') publicKey: string) {
     if (!publicKey) {
-      throw new AppException(
-        ErrorCode.MISSING_PUBLIC_KEY,
-        'Public key is required',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new AppException(ErrorCode.MISSING_PUBLIC_KEY, 'Public key is required');
     }
     return this.authService.login(publicKey);
   }

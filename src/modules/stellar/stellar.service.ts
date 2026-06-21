@@ -1,4 +1,4 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   Asset,
@@ -82,13 +82,11 @@ export class StellarService {
         throw new AppException(
           ErrorCode.STELLAR_ACCOUNT_NOT_FOUND,
           `Account ${publicKey} not found on Stellar network.`,
-          HttpStatus.NOT_FOUND,
         );
       }
       throw new AppException(
         ErrorCode.STELLAR_TRANSACTION_FAILED,
         'Failed to fetch transactions from Stellar network.',
-        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -107,7 +105,6 @@ export class StellarService {
       throw new AppException(
         ErrorCode.MISSING_SIGNER_SECRET,
         'STELLAR_SIGNER_SECRET is not configured for signing transactions.',
-        HttpStatus.BAD_REQUEST,
       );
     }
 
@@ -153,7 +150,6 @@ export class StellarService {
       throw new AppException(
         ErrorCode.MISSING_ASSET_ISSUER,
         'Non-native assets require an issuer address (e.g. the USDC issuer).',
-        HttpStatus.BAD_REQUEST,
       );
     }
 
@@ -166,7 +162,6 @@ export class StellarService {
       throw new AppException(
         ErrorCode.INVALID_STELLAR_ADDRESS,
         'Invalid public key. Must start with "G" and be at least 50 characters.',
-        HttpStatus.BAD_REQUEST,
       );
     }
   }
@@ -176,7 +171,6 @@ export class StellarService {
       throw new AppException(
         ErrorCode.INVALID_AMOUNT,
         'Invalid amount. Use a positive number with up to 7 decimal places (e.g. "1" or "0.1234567").',
-        HttpStatus.BAD_REQUEST,
       );
     }
   }

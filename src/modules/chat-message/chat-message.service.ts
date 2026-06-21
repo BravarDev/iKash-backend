@@ -1,4 +1,4 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PaginationDto } from '../../common/pagination.dto';
 import { CreateChatMessageDto } from './dto/create-chat-message.dto';
 import { ChatMessageRepository } from './chat-message.repository';
@@ -27,7 +27,6 @@ export class ChatMessageService {
       throw new AppException(
         ErrorCode.CHAT_MESSAGE_NOT_FOUND,
         `Chat message ${id} not found`,
-        HttpStatus.NOT_FOUND,
       );
     }
     return item;

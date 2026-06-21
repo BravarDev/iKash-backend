@@ -1,4 +1,4 @@
-import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PaginationDto } from '../../common/pagination.dto';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -33,7 +33,6 @@ export class OrderService {
       `Creating order ${orderId} — deploying escrow to chain first…`,
     );
 
-    // ── Step 1: Deploy escrow on Trustless Work (no DB writes) ───────────
     const { contractId, unsignedFundTransaction } =
       await this.escrowService.deployEscrowToChain(orderId, {
         sellerAddress: dto.sellerAddress,
@@ -47,7 +46,6 @@ export class OrderService {
       `Escrow deployed (contract=${contractId}). Persisting order + escrow in DB…`,
     );
 
-    // ── Step 2: Persist Order + EscrowOnChain atomically ────────────────
     const data: any = {
       orderId,
       offerId: dto.offerId,
@@ -69,11 +67,7 @@ export class OrderService {
 
     this.logger.log(`Order ${orderId} and escrow persisted successfully.`);
 
-    return {
-      ...order,
-      contractId,
-      unsignedFundTransaction,
-    };
+    return { ...order, contractId, unsignedFundTransaction };
   }
 
   list(p: PaginationDto, q: any) {
@@ -92,11 +86,7 @@ export class OrderService {
   async get(id: string) {
     const item = await this.repo.findById(id);
     if (!item) {
-      throw new AppException(
-        ErrorCode.ORDER_NOT_FOUND,
-        `Order ${id} not found`,
-        HttpStatus.NOT_FOUND,
-      );
+      throw new AppException(ErrorCode.ORDER_NOT_FOUND, `Order ${id} not found`);
     }
     return item;
   }

@@ -1,4 +1,4 @@
-import { CanActivate, ExecutionContext, HttpStatus, Injectable } from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AppException, ErrorCode } from './errors';
 
@@ -14,7 +14,6 @@ export class KycVerifiedGuard implements CanActivate {
       throw new AppException(
         ErrorCode.UNAUTHORIZED_ACTION,
         'Authentication required',
-        HttpStatus.FORBIDDEN,
       );
     }
 
@@ -27,7 +26,6 @@ export class KycVerifiedGuard implements CanActivate {
       throw new AppException(
         ErrorCode.KYC_REQUIRED,
         'KYC verification required to perform this action',
-        HttpStatus.FORBIDDEN,
       );
     }
 

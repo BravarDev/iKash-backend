@@ -14,9 +14,10 @@
  *
  *  3. ERRORS — All exceptions use AppException with a stable ErrorCode so the
  *     frontend can branch on `error.error` instead of parsing message text.
+ *     HTTP status is inferred automatically from the ErrorCode.
  */
 
-import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PaginationDto } from '../../common/pagination.dto';
 import { CreateEscrowDto } from './dto/create-escrow.dto';
@@ -48,22 +49,16 @@ export class EscrowService {
 
   // ─── Helpers ───────────────────────────────────────────────────────────────
 
-  /**
-   * Validates that the asset code is USDC (case-insensitive).
-   * Defaults to USDC if undefined. Throws for any other asset.
-   */
   private validateAssetCode(assetCode: string | undefined): void {
     const normalized = (assetCode || 'USDC').toUpperCase();
     if (normalized !== 'USDC') {
       throw new AppException(
         ErrorCode.UNSUPPORTED_ASSET,
         `Unsupported asset: "${assetCode}". Only USDC is accepted for escrow operations.`,
-        HttpStatus.BAD_REQUEST,
       );
     }
   }
 
-  /** Returns the Stellar network passphrase based on the STELLAR_NETWORK env var. */
   private getNetworkPassphrase(): string {
     const network = this.config
       .get<string>('STELLAR_NETWORK', 'testnet')
@@ -73,13 +68,6 @@ export class EscrowService {
       : 'Test SDF Network ; September 2015';
   }
 
-  /**
-   * Resolves the trustline object for a given asset code.
-   *
-   * For XLM/native, uses the Soroban SAC contract address (deterministic,
-   * identical on testnet and mainnet).
-   * For USDC or other issued assets, uses the issuer's G... account.
-   */
   private resolveTrustline(assetCode: string | undefined): Trustline {
     const isNative =
       !assetCode ||
@@ -132,7 +120,6 @@ export class EscrowService {
       throw new AppException(
         ErrorCode.ESCROW_NOT_FOUND,
         `Escrow ${id} not found`,
-        HttpStatus.NOT_FOUND,
       );
     }
     return escrow;
@@ -155,7 +142,6 @@ export class EscrowService {
         ErrorCode.ESCROW_INVALID_STATUS,
         `Invalid state transition: cannot "${action}" from status "${currentStatus}". ` +
           `Expected one of: [${allowed?.join(', ')}]`,
-        HttpStatus.BAD_REQUEST,
       );
     }
   }
@@ -183,7 +169,6 @@ export class EscrowService {
       this.config.get<string>('IKASH_PLATFORM_FEE', '1'),
     );
 
-    // ─ Build deploy payload ────────────────────────────────────────────────
     const deployPayload: InitializeMultiReleaseEscrowPayload = {
       signer: treasury,
       engagementId: orderId,
@@ -203,7 +188,6 @@ export class EscrowService {
 
     const deployResult = await this.tw.initializeEscrow(deployPayload);
 
-    // Backend signs + broadcasts deploy — no user signature needed
     const broadcastResult = await this.tw.signAndBroadcast(
       deployResult.unsignedTransaction,
       deployerSecret,
@@ -214,7 +198,6 @@ export class EscrowService {
       throw new AppException(
         ErrorCode.ESCROW_CREATION_FAILED,
         broadcastResult.message ?? 'Escrow contract deployment failed',
-        HttpStatus.BAD_REQUEST,
       );
     }
 
@@ -223,7 +206,6 @@ export class EscrowService {
       `Escrow deployed: contractId=${contractId} for order ${orderId}`,
     );
 
-    // ─ Build fund XDR for seller to sign ──────────────────────────────────
     const fundResult = await this.tw.fundEscrow({
       contractId,
       signer: dto.sellerAddress,
@@ -236,16 +218,12 @@ export class EscrowService {
     };
   }
 
-  /**
-   * COMBINED STEP 1+2: Open escrow (deploy + prepare fund XDR) in one call.
-   */
   async open(dto: OpenEscrowDto) {
     const existing = await this.repo.findByOrder(dto.orderId);
     if (existing?.contractId) {
       throw new AppException(
         ErrorCode.ESCROW_ALREADY_EXISTS,
         'An escrow contract already exists for this order',
-        HttpStatus.BAD_REQUEST,
       );
     }
 
@@ -274,11 +252,6 @@ export class EscrowService {
     };
   }
 
-  /**
-   * STEP 1: Initialize escrow (advanced / manual use).
-   *
-   * Returns an unsigned XDR for the client wallet to sign.
-   */
   async initialize(dto: InitializeEscrowDto) {
     this.validateAssetCode(dto.assetCode);
 
@@ -287,7 +260,6 @@ export class EscrowService {
       throw new AppException(
         ErrorCode.ESCROW_ALREADY_EXISTS,
         'An escrow contract already exists for this order',
-        HttpStatus.BAD_REQUEST,
       );
     }
 
@@ -337,10 +309,6 @@ export class EscrowService {
     };
   }
 
-  /**
-   * STEP 2: Fund escrow — seller deposits tokens.
-   * Returns an unsigned XDR for client-side wallet signing.
-   */
   async fund(dto: FundEscrowDto) {
     const escrow = await this.getOrFail(dto.escrowId);
 
@@ -348,14 +316,12 @@ export class EscrowService {
       throw new AppException(
         ErrorCode.ESCROW_NOT_INITIALIZED,
         'Escrow has not been initialized on-chain yet. Complete the initialize step first.',
-        HttpStatus.BAD_REQUEST,
       );
     }
     if (escrow.escrowStatus !== 'initialized') {
       throw new AppException(
         ErrorCode.ESCROW_INVALID_STATUS,
         `Cannot fund escrow in status "${escrow.escrowStatus}". Must be "initialized".`,
-        HttpStatus.BAD_REQUEST,
       );
     }
 
@@ -371,11 +337,6 @@ export class EscrowService {
     };
   }
 
-  /**
-   * STEP 2.1: Mark Fiat Sent (Buyer)
-   *
-   * Buyer confirms they sent the bank transfer and uploads evidence on-chain.
-   */
   async markFiatSent(id: string, dto: FiatSentDto) {
     const escrow = await this.getOrFail(id);
 
@@ -383,7 +344,6 @@ export class EscrowService {
       throw new AppException(
         ErrorCode.ESCROW_INVALID_STATUS,
         `Cannot mark fiat sent for escrow in status "${escrow.escrowStatus}". Must be "funded" or "fiat_sent".`,
-        HttpStatus.BAD_REQUEST,
       );
     }
 
@@ -401,13 +361,6 @@ export class EscrowService {
     };
   }
 
-  /**
-   * STEP 3: Release escrow funds.
-   *
-   * Seller confirms fiat receipt and signs the release. If the milestone is
-   * 'completed' (not yet 'approved'), the platform auto-approves using its
-   * treasury key before building the release XDR.
-   */
   async release(dto: ReleaseEscrowDto) {
     const escrow = await this.getOrFail(dto.escrowId);
 
@@ -415,14 +368,12 @@ export class EscrowService {
       throw new AppException(
         ErrorCode.ESCROW_NO_CONTRACT,
         'Escrow has no on-chain contract',
-        HttpStatus.BAD_REQUEST,
       );
     }
     if (!['funded', 'fiat_sent'].includes(escrow.escrowStatus)) {
       throw new AppException(
         ErrorCode.ESCROW_INVALID_STATUS,
         `Cannot release escrow in status "${escrow.escrowStatus}". Must be "funded" or "fiat_sent".`,
-        HttpStatus.BAD_REQUEST,
       );
     }
 
@@ -455,7 +406,6 @@ export class EscrowService {
         throw new AppException(
           ErrorCode.ESCROW_APPROVE_FAILED,
           `Auto-approve failed: ${broadcastResult.message}`,
-          HttpStatus.INTERNAL_SERVER_ERROR,
         );
       }
     }
@@ -472,9 +422,6 @@ export class EscrowService {
     };
   }
 
-  /**
-   * SYNC: Broadcast a wallet-signed XDR and update DB state.
-   */
   async syncTransaction(dto: SyncEscrowDto) {
     const escrow = await this.getOrFail(dto.escrowId);
 
@@ -485,7 +432,6 @@ export class EscrowService {
       throw new AppException(
         ErrorCode.ESCROW_SYNC_FAILED,
         `Blockchain sync failed: ${result.message || 'Unknown error'}`,
-        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
 
@@ -497,15 +443,12 @@ export class EscrowService {
         if (result.contractId) updateData.contractId = result.contractId;
         updateData.txHashLock = dto.signedXdr.substring(0, 64);
         break;
-
       case EscrowAction.FUND:
         updateData.escrowStatus = 'funded';
         break;
-
       case EscrowAction.FIAT_SENT:
         updateData.escrowStatus = 'fiat_sent';
         break;
-
       case EscrowAction.RELEASE:
         updateData.escrowStatus = 'released';
         updateData.txHashRelease = dto.signedXdr.substring(0, 64);
@@ -522,9 +465,6 @@ export class EscrowService {
     };
   }
 
-  /**
-   * Get escrow status with optional on-chain balance enrichment.
-   */
   async getStatus(id: string) {
     const escrow = await this.getOrFail(id);
 
@@ -557,7 +497,7 @@ export class EscrowService {
     return response;
   }
 
-  // ─── Legacy CRUD (backward compatibility) ──────────────────────────────────
+  // ─── Legacy CRUD ──────────────────────────────────────────────────────────
 
   async create(dto: CreateEscrowDto) {
     const exists = await this.repo.findByOrder(dto.orderId);
@@ -565,7 +505,6 @@ export class EscrowService {
       throw new AppException(
         ErrorCode.ESCROW_ALREADY_EXISTS,
         'An escrow already exists for this order',
-        HttpStatus.BAD_REQUEST,
       );
     }
     return this.repo.create(dto);
@@ -573,11 +512,7 @@ export class EscrowService {
 
   list(p: PaginationDto, orderId?: string) {
     if (orderId) {
-      return this.repo.findMany({
-        skip: p.skip,
-        take: p.take,
-        where: { orderId },
-      });
+      return this.repo.findMany({ skip: p.skip, take: p.take, where: { orderId } });
     }
     return this.repo.findMany({ skip: p.skip, take: p.take });
   }
@@ -585,11 +520,7 @@ export class EscrowService {
   async get(id: string) {
     const item = await this.repo.findById(id);
     if (!item) {
-      throw new AppException(
-        ErrorCode.ESCROW_NOT_FOUND,
-        `Escrow ${id} not found`,
-        HttpStatus.NOT_FOUND,
-      );
+      throw new AppException(ErrorCode.ESCROW_NOT_FOUND, `Escrow ${id} not found`);
     }
     return item;
   }

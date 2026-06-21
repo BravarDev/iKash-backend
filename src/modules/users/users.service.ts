@@ -1,4 +1,4 @@
-import { HttpStatus, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PaginationDto } from '../../common/pagination.dto';
 import { CreateUserDto } from './dto/create-users.dto';
 import { UpdateUserDto } from './dto/update-users.dto';
@@ -22,25 +22,17 @@ export class UsersService {
 
   async earlyRegister(email: string) {
     if (!email) {
-      throw new AppException(
-        ErrorCode.MISSING_EMAIL,
-        'Email is required',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new AppException(ErrorCode.MISSING_EMAIL, 'Email is required');
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      throw new AppException(
-        ErrorCode.INVALID_EMAIL,
-        'Invalid email format',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new AppException(ErrorCode.INVALID_EMAIL, 'Invalid email format');
     }
 
     return this.prisma.waitlist.upsert({
       where: { email },
-      update: {}, // idempotent — no-op if already registered
+      update: {},
       create: { email },
     });
   }
@@ -63,7 +55,6 @@ export class UsersService {
       ...profileData
     } = dto;
 
-    // Update user profile + clear pendingAccountInfo flag
     const updatedUser = await this.repo.update(userId, {
       ...profileData,
       pendingAccountInfo: false,
@@ -78,7 +69,6 @@ export class UsersService {
         throw new AppException(
           ErrorCode.PAYMENT_PROVIDER_NOT_FOUND,
           'Payment provider not found',
-          HttpStatus.NOT_FOUND,
         );
       }
 
@@ -95,16 +85,12 @@ export class UsersService {
       });
     }
 
-    // Issue new JWT with completed-setup claim
     const { access_token } = await this.authService.finalizeSetup(
       userId,
       updatedUser.publicKey,
     );
 
-    return {
-      user: updatedUser,
-      access_token,
-    };
+    return { user: updatedUser, access_token };
   }
 
   async create(dto: CreateUserDto) {
@@ -113,7 +99,6 @@ export class UsersService {
       throw new AppException(
         ErrorCode.USER_ALREADY_EXISTS,
         'A user with this public key already exists',
-        HttpStatus.BAD_REQUEST,
       );
     }
     return this.repo.create(dto);
@@ -130,11 +115,7 @@ export class UsersService {
   async get(id: string) {
     const item = await this.repo.findById(id);
     if (!item) {
-      throw new AppException(
-        ErrorCode.USER_NOT_FOUND,
-        `User ${id} not found`,
-        HttpStatus.NOT_FOUND,
-      );
+      throw new AppException(ErrorCode.USER_NOT_FOUND, `User ${id} not found`);
     }
     return item;
   }

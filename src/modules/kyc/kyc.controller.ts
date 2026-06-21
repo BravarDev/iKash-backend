@@ -30,11 +30,7 @@ export class KycController {
   @Post('start')
   async startKyc(@Body('userId') userId: string) {
     if (!userId) {
-      throw new AppException(
-        ErrorCode.MISSING_USER_ID,
-        'User ID is required',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new AppException(ErrorCode.MISSING_USER_ID, 'User ID is required');
     }
     return this.kycService.initializeSession(userId);
   }
@@ -46,11 +42,7 @@ export class KycController {
   @Get('status')
   async getKycStatus(@Query('userId') userId: string) {
     if (!userId) {
-      throw new AppException(
-        ErrorCode.MISSING_USER_ID,
-        'User ID is required',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new AppException(ErrorCode.MISSING_USER_ID, 'User ID is required');
     }
     const user = await this.prisma.appUser.findUnique({
       where: { userId },
@@ -80,7 +72,6 @@ export class KycController {
       throw new AppException(
         ErrorCode.KYC_WEBHOOK_SECRET_MISSING,
         'DIDIT_WEBHOOK_SECRET is not configured',
-        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
 
@@ -90,11 +81,9 @@ export class KycController {
       throw new AppException(
         ErrorCode.KYC_WEBHOOK_MISSING_BODY,
         'Missing raw HTTP body. Ensure { rawBody: true } is set in main.ts.',
-        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
 
-    // Try V2 signature first, then V1
     const sigToVerify = signatureV2 || signatureV1;
     if (sigToVerify) {
       const expectedSignature = crypto
@@ -109,7 +98,6 @@ export class KycController {
         throw new AppException(
           ErrorCode.KYC_WEBHOOK_INVALID_SIGNATURE,
           'Invalid webhook signature',
-          HttpStatus.UNAUTHORIZED,
         );
       }
       this.logger.log('[WEBHOOK] Signature verified ✅');
@@ -128,7 +116,6 @@ export class KycController {
         throw new AppException(
           ErrorCode.KYC_WEBHOOK_INVALID_SIGNATURE,
           'Invalid webhook signature',
-          HttpStatus.UNAUTHORIZED,
         );
       }
       this.logger.log('[WEBHOOK] Simple signature verified ✅');
@@ -137,7 +124,6 @@ export class KycController {
       throw new AppException(
         ErrorCode.KYC_WEBHOOK_INVALID_SIGNATURE,
         'Missing X-Signature header',
-        HttpStatus.UNAUTHORIZED,
       );
     }
 

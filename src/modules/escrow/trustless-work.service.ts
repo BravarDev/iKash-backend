@@ -16,8 +16,7 @@
  * which must only be called with secrets sourced from env vars.
  */
 
-import { Injectable, Logger, HttpStatus } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Injectable, Logger } from '@nestjs/common';import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import { AppException, ErrorCode } from '../../common/errors';
 import * as StellarSdk from '@stellar/stellar-sdk';
@@ -85,7 +84,6 @@ export class TrustlessWorkService {
       throw new AppException(
         ErrorCode.UNSUPPORTED_ASSET,
         `Only USDC is supported for escrow. Received: "${payload.trustline?.symbol}"`,
-        HttpStatus.BAD_REQUEST,
       );
     }
     return this.post<UnsignedTransactionResponse>('/deployer/multi-release', payload);
@@ -326,7 +324,6 @@ export class TrustlessWorkService {
       throw new AppException(
         ErrorCode.ESCROW_CREATION_FAILED,
         `Escrow operation failed: ${message}`,
-        status >= 400 && status < 600 ? status : HttpStatus.BAD_GATEWAY,
       );
     }
 
@@ -334,7 +331,6 @@ export class TrustlessWorkService {
     throw new AppException(
       ErrorCode.INTERNAL_SERVER_ERROR,
       'Unexpected error communicating with Trustless Work',
-      HttpStatus.INTERNAL_SERVER_ERROR,
     );
   }
 }
