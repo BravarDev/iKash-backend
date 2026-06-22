@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PaginationDto } from '../../common/pagination.dto';
 import { CreateUserDto } from './dto/create-users.dto';
 import { UpdateUserDto } from './dto/update-users.dto';
@@ -120,13 +120,27 @@ export class UsersService {
     return item;
   }
 
-  update(id: string, dto: UpdateUserDto, callerUserId?: string) {
+  async update(id: string, dto: UpdateUserDto, callerUserId?: string) {
     if (callerUserId && callerUserId !== id) {
       throw new AppException(
         ErrorCode.UNAUTHORIZED_ACTION,
         'You can only update your own profile.',
       );
     }
+
+    if (dto.alias) {
+      const user = await this.repo.findById(id);
+      if (!user) {
+        throw new AppException(ErrorCode.USER_NOT_FOUND, `User ${id} not found`);
+      }
+      if (user.alias !== dto.alias) {
+        const isAvailable = await this.repo.isAliasAvailable(dto.alias);
+        if (!isAvailable) {
+          throw new AppException(ErrorCode.ALIAS_TAKEN, 'Alias is already taken');
+        }
+      }
+    }
+
     const data: any = { ...dto };
     if (dto.kycStatus) data.kycUpdatedAt = new Date();
     return this.repo.update(id, data);

@@ -14,6 +14,7 @@ import { PaginationDto } from '../../common/pagination.dto';
 import type { AuthenticatedRequest } from '../../lib/types/auth';
 import { CreateUserDto } from './dto/create-users.dto';
 import { UpdateUserDto } from './dto/update-users.dto';
+import { ValidateAliasDto } from './dto/validate-alias.dto';
 import { UsersService } from './users.service';
 import { SetupAccountDto } from './dto/setup-account.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -32,9 +33,23 @@ export class UsersController {
     return this.service.earlyRegister(email);
   }
 
-  @Get('available-username')
-  checkAlias(@Query('alias') alias: string) {
-    return this.service.isAliasAvailable(alias);
+  /**
+   * Validates the format and availability of a user alias.
+   *
+   * The alias is first validated at the DTO layer (`ValidateAliasDto`) — it must
+   * be lowercase, contain no spaces, and only include characters matching
+   * `/^[a-z0-9.!_]+$/`. If the format check passes, the service queries the
+   * database and returns `{ available: boolean }`.
+   *
+   * @returns `{ available: true }` if the alias is free, `{ available: false }` if taken.
+   * @throws `400 Bad Request` when the alias fails format validation (invalid chars, uppercase, spaces, too long).
+   *
+   * @see docs/entrypoint-dto-validations.md for the full scenario matrix.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Get('validate-alias')
+  checkAlias(@Query() query: ValidateAliasDto) {
+    return this.service.isAliasAvailable(query.alias);
   }
 
   @UseGuards(JwtAuthGuard)

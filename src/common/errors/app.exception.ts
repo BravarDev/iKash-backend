@@ -24,7 +24,6 @@ export function errorCodeToHttpStatus(code: ErrorCode): HttpStatus {
     [ErrorCode.MISSING_EMAIL]: HttpStatus.BAD_REQUEST,
     [ErrorCode.MISSING_USER_ID]: HttpStatus.BAD_REQUEST,
     [ErrorCode.USER_ALREADY_EXISTS]: HttpStatus.BAD_REQUEST,
-    [ErrorCode.ALIAS_TAKEN]: HttpStatus.BAD_REQUEST,
     [ErrorCode.ESCROW_ALREADY_EXISTS]: HttpStatus.BAD_REQUEST,
     [ErrorCode.ESCROW_NOT_INITIALIZED]: HttpStatus.BAD_REQUEST,
     [ErrorCode.ESCROW_NO_CONTRACT]: HttpStatus.BAD_REQUEST,
@@ -40,6 +39,9 @@ export function errorCodeToHttpStatus(code: ErrorCode): HttpStatus {
     [ErrorCode.SELF_SEND]: HttpStatus.BAD_REQUEST,
     [ErrorCode.AMOUNT_TOO_SMALL]: HttpStatus.BAD_REQUEST,
     [ErrorCode.MISSING_FEE_COLLECTOR]: HttpStatus.BAD_REQUEST,
+
+    // ── 409 Conflict ──────────────────────────────────────────────────
+    [ErrorCode.ALIAS_TAKEN]: HttpStatus.CONFLICT,
 
     // ── 401 Unauthorized ─────────────────────────────────────────────
     [ErrorCode.KYC_WEBHOOK_INVALID_SIGNATURE]: HttpStatus.UNAUTHORIZED,
