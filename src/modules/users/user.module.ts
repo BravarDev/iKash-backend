@@ -17,6 +17,6 @@ import { MockFileStorageService } from './file-storage/mock-file-storage.service
       useClass: MockFileStorageService,
     },
   ],
-  exports: [UsersService],
+  exports: [UsersService, UsersRepository],
 })
 export class UsersModule {}

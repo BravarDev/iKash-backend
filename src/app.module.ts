@@ -12,6 +12,7 @@ import { StellarModule } from './modules/stellar/stellar.module';
 import { KycModule } from './modules/kyc/kyc.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { PaymentProvidersModule } from './modules/payment-providers/payment-providers.module';
+import { SendModule } from './modules/send/send.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { PaymentProvidersModule } from './modules/payment-providers/payment-prov
     KycModule,
     AuthModule,
     PaymentProvidersModule,
+    SendModule,
   ],
 })
 export class AppModule {}

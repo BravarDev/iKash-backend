@@ -1,0 +1,49 @@
+---
+description: Requires every newly exposed endpoint or resource mutation to explicitly declare authentication/authorization (Guards + Roles) and validate resource ownership, unless explicitly documented as public.
+globs:
+  - "src/**/*.controller.ts"
+  - "src/**/*.resolver.ts"
+alwaysApply: false
+---
+
+# Security & Role-Based Access Control (RBAC)
+
+## Rule
+Every newly exposed endpoint or resource mutation must explicitly declare an authentication and authorization layer.
+
+## Acceptance Criteria
+- Unless a route is explicitly documented as public (e.g. via a clear comment or a `@Public()` decorator), every handler must enforce identity verification using Guards, e.g.:
+  ```typescript
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.User)
+  ```
+- The handler (or the service it delegates to) must implement strict **resource-ownership validation**: the authenticated principal (`req.user.id` / JWT subject) must be checked against the target wallet, account, or resource being read or modified. Authorization must not stop at "is this user logged in" — it must confirm "does this user own/control this specific resource."
+- Endpoints that mutate balances, escrow state, or any P2P transaction record require both authentication *and* ownership checks; authentication alone is insufficient.
+
+## What to flag in review
+- New `@Controller`/`@Resolver` handlers without `@UseGuards(...)` and no explicit `@Public()` marker or comment justifying public access.
+- Guards present but ownership not verified — e.g. a `PATCH /wallets/:id` handler that checks the JWT is valid but never confirms `req.user.id === wallet.ownerId`.
+- Roles applied too broadly (e.g. `@Roles(Role.User)` on an admin-only operation, or missing `@Roles` entirely on sensitive mutations).
+- Authorization logic duplicated ad-hoc per handler instead of centralized in a Guard or a reusable ownership-check utility/service method.
+
+## Example
+
+```typescript
+// ❌ Bad — no guard, no ownership check
+@Patch('wallets/:id')
+async updateWallet(@Param('id') id: string, @Body() dto: UpdateWalletDto) {
+  return this.walletsService.update(id, dto);
+}
+
+// ✅ Good — guarded, role-checked, ownership-verified
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(Role.User)
+@Patch('wallets/:id')
+async updateWallet(
+  @Param('id') id: string,
+  @Body() dto: UpdateWalletDto,
+  @CurrentUser() user: AuthUser,
+) {
+  return this.walletsService.updateOwned(id, dto, user.id); // service enforces ownership
+}
+```

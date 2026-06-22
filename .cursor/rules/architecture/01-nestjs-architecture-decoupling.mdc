@@ -1,0 +1,46 @@
+---
+description: Enforces NestJS layering so Controllers and GraphQL Resolvers never contain business logic, ledger mutations, or financial orchestration — that logic must live in injectable Services.
+globs:
+  - "src/**/*.controller.ts"
+  - "src/**/*.resolver.ts"
+alwaysApply: false
+---
+
+# NestJS Architecture & Decoupling
+
+## Rule
+Business logic, ledger mutations, and financial orchestration must never be coupled directly within `Controllers` or GraphQL `Resolvers`.
+
+## Acceptance Criteria
+- Controllers/Resolvers are restricted exclusively to:
+  - Request routing (`@Get`, `@Post`, `@Mutation`, `@Query`, etc.)
+  - Input schema validation via NestJS `ValidationPipe` + `class-validator` DTOs
+  - Response transformation/shaping (mapping service results to response DTOs)
+- All transactional logic, escrow processing, rate calculations, and any state mutation must reside in specialized, injectable `Services`.
+- A Controller/Resolver method body should read as a thin orchestration of: validate input → call one (or few) service method(s) → map/return result. No direct database client calls, no raw business rule branching (e.g. fee calculation, escrow state machine logic) inline in the handler.
+
+## What to flag in review
+- Any `PrismaService`, `DataSource`, or raw repository call made directly inside a `*.controller.ts` or `*.resolver.ts` file.
+- Conditional business rules (e.g. `if (amount > limit) { ... }`, fee/rate math, escrow status transitions) written inline in a handler instead of delegated to a service method.
+- Controllers/Resolvers exceeding a few lines per handler, or importing domain entities/ledger types directly instead of going through a service-layer DTO/result type.
+- Missing or bypassed `ValidationPipe`/DTO on inputs that are passed straight into a service call.
+
+## Example
+
+```typescript
+// ❌ Bad — business logic inside the controller
+@Post('transfer')
+async transfer(@Body() body: any) {
+  const account = await this.prisma.account.findUnique({ where: { id: body.fromId } });
+  if (account.balance < body.amount) {
+    throw new Error('not enough funds');
+  }
+  // ... inline ledger mutation
+}
+
+// ✅ Good — controller delegates to service
+@Post('transfer')
+async transfer(@Body() dto: TransferDto): Promise<TransferResponseDto> {
+  return this.transactionsService.transfer(dto);
+}
+```

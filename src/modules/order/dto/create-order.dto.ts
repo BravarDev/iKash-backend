@@ -1,4 +1,4 @@
-import { IsIn, IsNumberString, IsOptional, IsUUID } from 'class-validator';
+import { IsIn, IsNotEmpty, IsNumberString, IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class CreateOrderDto {
   @IsUUID()
@@ -22,4 +22,21 @@ export class CreateOrderDto {
 
   @IsOptional()
   expiresAt?: string; // ISO string
+
+  // ─── Escrow fields (required for atomic order+escrow creation) ───────────
+  @IsString()
+  @IsNotEmpty()
+  sellerAddress: string;
+
+  @IsString()
+  @IsNotEmpty()
+  buyerAddress: string;
+
+  @IsString()
+  @IsNotEmpty()
+  assetCode: string;
+
+  @IsOptional()
+  @IsString()
+  title?: string;
 }

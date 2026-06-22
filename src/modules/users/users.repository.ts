@@ -10,7 +10,20 @@ export class UsersRepository extends BaseRepository {
 
   // ✅ ESTE método existe SOLO aquí, por eso el service debe inyectar UsersRepository
   findByPublicKey(publicKey: string) {
-    return this.prisma.appUser.findUnique({ where: { publicKey } });
+    return this.prisma.appUser.findUnique({ 
+      where: { publicKey },
+      include: {
+        paymentMethods: {
+          include: {
+            payment_provider: true
+          }
+        }
+      }
+    });
+  }
+
+  findByAlias(alias: string) {
+    return this.prisma.appUser.findUnique({ where: { alias } });
   }
 
   async findOrCreateByPublicKey(publicKey: string) {

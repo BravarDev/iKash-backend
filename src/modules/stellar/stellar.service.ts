@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   Asset,
@@ -9,7 +9,9 @@ import {
   Networks,
   Operation,
   TransactionBuilder,
-} from 'stellar-sdk';
+} from '@stellar/stellar-sdk';
+import { AppException, ErrorCode } from '../../common/errors';
+import { describeHorizonError } from '../../lib/utils/stellar-error.util';
 
 type NetworkType = 'testnet' | 'public';
 
@@ -55,38 +57,55 @@ export class StellarService {
   async getTransactions(publicKey: string, limit = 10) {
     this.assertPublicKey(publicKey);
 
-    const res = await this.server
-      .transactions()
-      .forAccount(publicKey)
-      .order('desc')
-      .limit(Math.min(Math.max(limit, 1), 200))
-      .call();
+    try {
+      const res = await this.server
+        .payments()
+        .forAccount(publicKey)
+        .order('desc')
+        .limit(Math.min(Math.max(limit, 1), 200))
+        .call();
 
-    return res.records.map((t: any) => ({
-      id: t.id,
-      hash: t.hash,
-      created_at: t.created_at,
-      memo_type: t.memo_type,
-      memo: t.memo,
-      successful: t.successful,
-      fee_charged: t.fee_charged,
-      source_account: t.source_account,
-    }));
+      return res.records.map((op: any) => ({
+        id: op.id,
+        transaction_hash: op.transaction_hash,
+        created_at: op.created_at,
+        type: op.type,
+        amount: op.amount ?? null,
+        asset: op.asset_type === 'native' ? 'XLM' : (op.asset_code ?? null),
+        asset_issuer: op.asset_issuer ?? null,
+        from: op.from ?? op.funder ?? null,
+        to: op.to ?? op.account ?? null,
+        direction:
+          op.to === publicKey || op.account === publicKey ? 'received' : 'sent',
+      }));
+    } catch (err: any) {
+      if (err?.response?.status === 404) {
+        throw new AppException(
+          ErrorCode.STELLAR_ACCOUNT_NOT_FOUND,
+          `Account ${publicKey} not found on Stellar network.`,
+        );
+      }
+      throw new AppException(
+        ErrorCode.STELLAR_TRANSACTION_FAILED,
+        'Failed to fetch transactions from Stellar network.',
+      );
+    }
   }
 
   /**
-   * Envía un pago firmado por tu backend.
-   * Para producción: mejor firmar del lado cliente o custodiar secreto con KMS/HSM.
+   * Sends a payment signed by the backend wallet.
+   * For production, prefer client-side signing or KMS/HSM custody.
    */
   async sendPayment(params: {
     destination: string;
-    amount: string; // "1.5"
+    amount: string;
     memo?: string;
-    asset?: { code: string; issuer?: string }; // si no viene => XLM
+    asset?: { code: string; issuer?: string };
   }) {
     if (!this.signerSecret) {
-      throw new BadRequestException(
-        'Falta STELLAR_SIGNER_SECRET para firmar la transacción.',
+      throw new AppException(
+        ErrorCode.MISSING_SIGNER_SECRET,
+        'STELLAR_SIGNER_SECRET is not configured for signing transactions.',
       );
     }
 
@@ -96,13 +115,9 @@ export class StellarService {
     const sourceKeypair = Keypair.fromSecret(this.signerSecret);
     const sourcePublicKey = sourceKeypair.publicKey();
 
-    // Cargar cuenta origen
     const account = await this.server.loadAccount(sourcePublicKey);
-
-    // Asset (XLM o token)
     const asset = this.buildAsset(params.asset);
 
-    // Construcción TX
     let builder = new TransactionBuilder(account, {
       fee: String(BASE_FEE),
       networkPassphrase: this.networkPassphrase,
@@ -115,13 +130,10 @@ export class StellarService {
     );
 
     if (params.memo) {
-      // Memo text: límite aprox 28 bytes
       builder = builder.addMemo(Memo.text(params.memo));
     }
 
     const tx = builder.setTimeout(60).build();
-
-    // Firmar + enviar
     tx.sign(sourceKeypair);
     const res = await this.server.submitTransaction(tx);
 
@@ -132,12 +144,103 @@ export class StellarService {
     };
   }
 
+  /**
+   * Builds an unsigned USDC transaction with a payment to the recipient
+   * and a second payment for the platform fee. The frontend signs the XDR.
+   */
+  async buildUnsignedUsdcSend(params: {
+    sourcePublicKey: string;
+    destination: string;
+    amount: string;
+    feeAddress: string;
+    feeAmount: string;
+  }) {
+    this.assertPublicKey(params.sourcePublicKey);
+    this.assertPublicKey(params.destination);
+    this.assertPublicKey(params.feeAddress);
+    this.assertAmount(params.amount);
+    this.assertAmount(params.feeAmount);
+
+    const usdc = this.getUsdcAsset();
+    const account = await this.server.loadAccount(params.sourcePublicKey);
+
+    const tx = new TransactionBuilder(account, {
+      fee: String(BASE_FEE),
+      networkPassphrase: this.networkPassphrase,
+    })
+      .addOperation(
+        Operation.payment({
+          destination: params.destination,
+          asset: usdc,
+          amount: params.amount,
+        }),
+      )
+      .addOperation(
+        Operation.payment({
+          destination: params.feeAddress,
+          asset: usdc,
+          amount: params.feeAmount,
+        }),
+      )
+      .setTimeout(180)
+      .build();
+
+    return {
+      xdr: tx.toXDR(),
+      networkPassphrase: this.networkPassphrase,
+    };
+  }
+
+  /**
+   * Receives an XDR already signed by the client and submits it to Stellar.
+   * Translates Horizon errors into clear messages via describeHorizonError.
+   */
+  async submitSignedXdr(signedXdr: string) {
+    let tx: any;
+    try {
+      tx = TransactionBuilder.fromXDR(signedXdr, this.networkPassphrase);
+    } catch {
+      throw new AppException(
+        ErrorCode.INVALID_AMOUNT,
+        'Invalid or malformed signedXdr.',
+      );
+    }
+
+    try {
+      const res = await this.server.submitTransaction(tx);
+      return {
+        hash: res.hash,
+        ledger: res.ledger,
+        successful: res.successful,
+      };
+    } catch (err: any) {
+      throw new AppException(
+        ErrorCode.STELLAR_TRANSACTION_FAILED,
+        describeHorizonError(err),
+      );
+    }
+  }
+
+  /** Builds the USDC Asset from the configured issuer. */
+  private getUsdcAsset() {
+    const issuer = this.config.get<string>('TRUSTLESS_WORK_USDC_ISSUER');
+    if (!issuer) {
+      throw new AppException(
+        ErrorCode.MISSING_ASSET_ISSUER,
+        'TRUSTLESS_WORK_USDC_ISSUER is not configured for USDC operations.',
+      );
+    }
+    this.assertPublicKey(issuer);
+    return new Asset('USDC', issuer);
+  }
+
   private buildAsset(asset?: { code: string; issuer?: string }) {
     if (!asset || asset.code === 'XLM') return Asset.native();
 
     if (!asset.issuer) {
-      throw new BadRequestException(
-        'Para assets no nativos debes enviar issuer (ej: USDC issuer).',
+      throw new AppException(
+        ErrorCode.MISSING_ASSET_ISSUER,
+        'Non-native assets require an issuer address (e.g. the USDC issuer).',
       );
     }
 
@@ -146,16 +249,20 @@ export class StellarService {
   }
 
   private assertPublicKey(key: string) {
-    // validación simple (evita dependencias extra)
     if (!key || key[0] !== 'G' || key.length < 50) {
-      throw new BadRequestException('Public key inválida (debe iniciar con G...).');
+      throw new AppException(
+        ErrorCode.INVALID_STELLAR_ADDRESS,
+        'Invalid public key. Must start with "G" and be at least 50 characters.',
+      );
     }
   }
 
   private assertAmount(amount: string) {
-    // Stellar usa hasta 7 decimales, y debe ser > 0
     if (!/^\d+(\.\d{1,7})?$/.test(amount) || Number(amount) <= 0) {
-      throw new BadRequestException('Amount inválido. Ej: "1" o "0.1234567"');
+      throw new AppException(
+        ErrorCode.INVALID_AMOUNT,
+        'Invalid amount. Use a positive number with up to 7 decimal places (e.g. "1" or "0.1234567").',
+      );
     }
   }
 }

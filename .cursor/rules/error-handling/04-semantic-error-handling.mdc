@@ -1,0 +1,59 @@
+---
+description: Prohibits leaking raw exceptions, stack traces, or generic InternalServerErrorException for anticipated business failures. Requires dedicated semantic NestJS exceptions with structured error codes, formatted via a global ExceptionFilter.
+globs:
+  - "src/**/*.service.ts"
+  - "src/**/*.controller.ts"
+  - "src/**/*.resolver.ts"
+  - "src/**/*.filter.ts"
+alwaysApply: false
+---
+
+# Semantic Error Handling
+
+## Rule
+Raw runtime exceptions, stack traces, or generic `InternalServerErrorException` bubbles must never leak to the client interface for anticipated business failures.
+
+## Acceptance Criteria
+- Anticipated domain failures (e.g. "insufficient funds", "invalid cryptographic signature", "escrow already settled") must throw dedicated, semantic NestJS exceptions — `BadRequestException`, `ConflictException`, `ForbiddenException`, `NotFoundException`, etc. — never a bare `Error`, an unhandled rejection, or a generic `InternalServerErrorException`.
+- Thrown exceptions must carry a structured, machine-readable payload, e.g.:
+  ```json
+  { "statusCode": 400, "error": "INSUFFICIENT_FUNDS", "message": "Account balance is insufficient for this transfer." }
+  ```
+- A global `ExceptionFilter` (`@Catch()` / `APP_FILTER`) must be the single place responsible for formatting all outgoing error responses consistently — individual handlers/services should not hand-format error JSON themselves.
+- True unanticipated/unknown errors may still surface as 500s, but only through the global filter's catch-all path — never via an uncaught raw exception with a stack trace sent to the client.
+
+## What to flag in review
+- `throw new Error('...')` or throwing non-NestJS-exception objects anywhere in services handling business rules.
+- `try/catch` blocks that catch a specific failure and rethrow as `InternalServerErrorException` instead of the matching semantic exception (e.g. wrapping an "insufficient funds" check failure as a 500).
+- Exceptions thrown without a structured `error` code string — e.g. `throw new BadRequestException('something went wrong')` with no machine-readable identifier.
+- Stack traces, raw driver errors (e.g. raw Prisma `PrismaClientKnownRequestError`), or internal object dumps passed directly into an exception message exposed to the client.
+- New error-formatting logic added ad hoc in a controller/service instead of relying on the global `ExceptionFilter`.
+
+## Example
+
+```typescript
+// ❌ Bad — generic error, leaks internal detail, wrong status semantics
+if (account.balance < amount) {
+  throw new InternalServerErrorException(`balance ${account.balance} < ${amount}`);
+}
+
+// ✅ Good — semantic exception with structured code
+if (account.balance < amount) {
+  throw new BadRequestException({
+    statusCode: 400,
+    error: 'INSUFFICIENT_FUNDS',
+    message: 'Account balance is insufficient for this transfer.',
+  });
+}
+```
+
+```typescript
+// ✅ Good — global filter centralizes formatting
+@Catch()
+export class GlobalExceptionFilter implements ExceptionFilter {
+  catch(exception: unknown, host: ArgumentsHost) {
+    // map known HttpExceptions to their structured body,
+    // map unknown errors to a generic 500 without leaking internals
+  }
+}
+```
