@@ -9,50 +9,42 @@ datasource db {
 }
 
 model AppUser {
-  userId               String           @id @default(dbgenerated("gen_random_uuid()")) @map("user_id") @db.Uuid
-  publicKey            String           @unique @map("public_key")
-  alias                String?          @unique @map("alias")
-  kycStatus            kyc_status       @default(pending) @map("kyc_status")
-  kycUpdatedAt         DateTime?        @map("kyc_updated_at") @db.Timestamptz(6)
-  totalVolume          Decimal          @default(0) @map("total_volume") @db.Decimal(20, 7)
-  createdAt            DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  currentNonce         String?          @map("current_nonce")
-  email                String?          @map("email")
-  notificationsEnabled Boolean          @default(true) @map("notifications_enabled")
-  pendingAccountInfo   Boolean          @default(true) @map("pending_account_info")
-  preferredCurrency    String?          @map("preferred_currency")
+  userId               String          @id @default(dbgenerated("gen_random_uuid()")) @map("user_id") @db.Uuid
+  publicKey            String          @unique @map("public_key")
+  alias                String?         @unique @map("alias")
+  kycStatus            kyc_status      @default(pending) @map("kyc_status")
+  kycUpdatedAt         DateTime?       @map("kyc_updated_at") @db.Timestamptz(6)
+  totalVolume          Decimal         @default(0) @map("total_volume") @db.Decimal(20, 7)
+  createdAt            DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  currentNonce         String?         @map("current_nonce")
+  email                String?         @map("email")
+  notificationsEnabled Boolean         @default(true) @map("notifications_enabled")
+  pendingAccountInfo   Boolean         @default(true) @map("pending_account_info")
+  preferredCurrency    String?         @map("preferred_currency")
+  bio                  String?         @map("bio")
+  securityUpdates      Boolean         @default(true) @map("security_updates")
   chatMessages         ChatMessage[]
-  offers               Offer[]          @relation("UserOffers")
-  buyOrders            Order[]          @relation("BuyerOrders")
-  sellOrders           Order[]          @relation("SellerOrders")
-  payment_method       payment_method[]
+  offers               Offer[]         @relation("UserOffers")
+  buyOrders            Order[]         @relation("BuyerOrders")
+  sellOrders           Order[]         @relation("SellerOrders")
   paymentMethods       PaymentMethod[]
 
   @@map("app_user")
 }
 
-model PaymentMethod {
-  paymentId      String  @id @default(dbgenerated("gen_random_uuid()")) @map("payment_id") @db.Uuid
-  userId         String  @map("user_id") @db.Uuid
-  bankName       String  @map("bank_name")
-  accountDetails String  @map("account_details")
-  isActive       Boolean @default(true) @map("is_active")
-  user           AppUser @relation(fields: [userId], references: [userId], onDelete: Cascade, onUpdate: NoAction)
-
-  @@map("paymentmethod")
-}
-
 model Offer {
-  offerId   String       @id @default(dbgenerated("gen_random_uuid()")) @map("offer_id") @db.Uuid
-  creatorId String       @map("creator_id") @db.Uuid
-  type      offer_type
-  assetCode String       @map("asset_code")
-  price     Decimal      @map("price") @db.Decimal(20, 7)
-  minAmount Decimal      @map("min_amount") @db.Decimal(20, 7)
-  maxAmount Decimal      @map("max_amount") @db.Decimal(20, 7)
-  status    offer_status @default(active)
-  creator   AppUser      @relation("UserOffers", fields: [creatorId], references: [userId], onDelete: Cascade, onUpdate: NoAction)
-  orders    Order[]
+  offerId         String          @id @default(dbgenerated("gen_random_uuid()")) @map("offer_id") @db.Uuid
+  creatorId       String          @map("creator_id") @db.Uuid
+  type            offer_type
+  assetCode       String          @map("asset_code")
+  price           Decimal         @map("price") @db.Decimal(20, 7)
+  minAmount       Decimal         @map("min_amount") @db.Decimal(20, 7)
+  maxAmount       Decimal         @map("max_amount") @db.Decimal(20, 7)
+  status          offer_status    @default(active)
+  executed        Boolean         @default(false)
+  creator         AppUser         @relation("UserOffers", fields: [creatorId], references: [userId], onDelete: Cascade, onUpdate: NoAction)
+  orders          Order[]
+  payment_methods PaymentMethod[] @relation("OfferPaymentMethods")
 
   @@map("offer")
 }
@@ -104,39 +96,41 @@ model ChatMessage {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
-model payment_method {
-  payment_id            String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id               String                @db.Uuid
-  provider_id           String                @db.Uuid
-  type                  payment_provider_type
-  account_identifier    String
-  beneficiary_name      String?
-  identification_number String?
-  description           String?
-  is_active             Boolean               @default(true)
-  created_at            DateTime              @default(now()) @db.Timestamptz(6)
-  updated_at            DateTime              @default(now()) @db.Timestamptz(6)
-  payment_provider      payment_provider      @relation(fields: [provider_id], references: [provider_id], onDelete: NoAction, onUpdate: NoAction)
-  app_user              AppUser               @relation(fields: [user_id], references: [userId], onDelete: NoAction, onUpdate: NoAction)
+model PaymentMethod {
+  paymentId            String                @id @default(dbgenerated("gen_random_uuid()")) @map("payment_id") @db.Uuid
+  userId               String                @map("user_id") @db.Uuid
+  providerId           String                @map("provider_id") @db.Uuid
+  type                 payment_provider_type
+  accountIdentifier    String                @map("account_identifier")
+  beneficiaryName      String?               @map("beneficiary_name")
+  identificationNumber String?               @map("identification_number")
+  description          String?
+  isActive             Boolean               @default(true) @map("is_active")
+  createdAt            DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime              @default(now()) @map("updated_at") @db.Timestamptz(6)
+  payment_provider     payment_provider      @relation(fields: [providerId], references: [provider_id], onDelete: NoAction, onUpdate: NoAction)
+  app_user             AppUser               @relation(fields: [userId], references: [userId], onDelete: NoAction, onUpdate: NoAction)
+  offers               Offer[]               @relation("OfferPaymentMethods")
 
-  @@index([is_active], map: "idx_payment_method_is_active")
-  @@index([provider_id], map: "idx_payment_method_provider_id")
+  @@index([isActive], map: "idx_payment_method_is_active")
+  @@index([providerId], map: "idx_payment_method_provider_id")
   @@index([type], map: "idx_payment_method_type")
-  @@index([user_id], map: "idx_payment_method_user_id")
+  @@index([userId], map: "idx_payment_method_user_id")
+  @@map("payment_method")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model payment_provider {
-  provider_id    String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name           String
-  type           payment_provider_type
-  country_code   String?
-  is_active      Boolean               @default(true)
-  metadata       Json?
-  created_at     DateTime              @default(now()) @db.Timestamptz(6)
-  updated_at     DateTime              @default(now()) @db.Timestamptz(6)
-  payment_method payment_method[]
+  provider_id     String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String
+  type            payment_provider_type
+  country_code    String?
+  is_active       Boolean               @default(true)
+  metadata        Json?
+  created_at      DateTime              @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime              @default(now()) @db.Timestamptz(6)
+  payment_methods PaymentMethod[]
 
   @@unique([name, country_code, type], map: "payment_provider_name_country_type_unique")
   @@index([country_code], map: "idx_payment_provider_country_code")
@@ -191,4 +185,12 @@ enum payment_provider_type {
   MOBILE
   PLATFORM
   BANK
+}
+
+model Waitlist {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email     String   @unique
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("waitlist")
 }

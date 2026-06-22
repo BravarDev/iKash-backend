@@ -57,3 +57,7 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 seed-order.js
 accounts.yaml
+
+# GenDD Agentic Governance (local CLI config; may contain secrets)
+/.gendd-flow-gov/
+

@@ -1,11 +1,23 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { PaginationDto } from '../../common/pagination.dto';
+import type { AuthenticatedRequest } from '../../lib/types/auth';
 import { CreateUserDto } from './dto/create-users.dto';
 import { UpdateUserDto } from './dto/update-users.dto';
+import { ValidateAliasDto } from './dto/validate-alias.dto';
 import { UsersService } from './users.service';
 import { SetupAccountDto } from './dto/setup-account.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { UseGuards } from '@nestjs/common';
 
 @Controller('users')
 export class UsersController {
@@ -16,9 +28,28 @@ export class UsersController {
     return this.service.getOrCreateAccount(publicKey);
   }
 
-  @Get('available-username')
-  checkAlias(@Query('alias') alias: string) {
-    return this.service.isAliasAvailable(alias);
+  @Post('early-register')
+  earlyRegister(@Body('email') email: string) {
+    return this.service.earlyRegister(email);
+  }
+
+  /**
+   * Validates the format and availability of a user alias.
+   *
+   * The alias is first validated at the DTO layer (`ValidateAliasDto`) — it must
+   * be lowercase, contain no spaces, and only include characters matching
+   * `/^[a-z0-9.!_]+$/`. If the format check passes, the service queries the
+   * database and returns `{ available: boolean }`.
+   *
+   * @returns `{ available: true }` if the alias is free, `{ available: false }` if taken.
+   * @throws `400 Bad Request` when the alias fails format validation (invalid chars, uppercase, spaces, too long).
+   *
+   * @see docs/entrypoint-dto-validations.md for the full scenario matrix.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Get('validate-alias')
+  checkAlias(@Query() query: ValidateAliasDto) {
+    return this.service.isAliasAvailable(query.alias);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -42,9 +73,14 @@ export class UsersController {
     return this.service.get(id);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
-    return this.service.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateUserDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.service.update(id, dto, req.user?.userId ?? req.user?.id);
   }
 
   @Delete(':id')

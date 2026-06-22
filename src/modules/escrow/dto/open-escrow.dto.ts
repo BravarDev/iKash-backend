@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsUUID, Min } from 'class-validator';
+import { IsString, IsNumber, IsUUID, Min, IsOptional } from 'class-validator';
 
 /**
  * OpenEscrowDto
@@ -28,4 +28,9 @@ export class OpenEscrowDto {
   /** Human-readable title shown on the escrow contract */
   @IsString()
   title: string;
+
+  /** Asset code being sold (e.g., XLM, USDC, native). Defaults to USDC if omitted. */
+  @IsString()
+  @IsOptional()
+  assetCode?: string;
 }

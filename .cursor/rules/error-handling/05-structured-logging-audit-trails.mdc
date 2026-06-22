@@ -1,0 +1,43 @@
+---
+description: Requires structured audit logging at every critical milestone of a P2P financial event's lifecycle (initiation, processing, settlement) via the NestJS Logger, while strictly forbidding private keys, credentials, or unmasked sensitive data from ever reaching stdout.
+globs:
+  - "src/**/*.service.ts"
+  - "src/**/*.gateway.ts"
+  - "src/**/*.processor.ts"
+alwaysApply: false
+---
+
+# Structured Logging & Immutable Audit Trails
+
+## Rule
+Critical milestones in the lifecycle of any P2P financial event must emit an explicit, highly structured audit log.
+
+## Acceptance Criteria
+- Use the native NestJS `Logger` (or an integrated structured logging engine, e.g. Pino/Winston wired through Nest) to trace, at minimum:
+  - Operation **initiation** (e.g. transfer requested, escrow created)
+  - **Processing/intermediate state** transitions (e.g. funds locked, signature verified)
+  - **Final settlement** (success or terminal failure)
+- Log entries must include searchable, structured, correlatable fields — at minimum `transactionId` and `userId` (or `walletId`/`escrowId` where relevant) — emitted as structured fields/context, not just interpolated into a free-text string.
+- **Crucial restriction:** private keys, secrets, credentials, full JWTs, or unmasked sensitive user data (e.g. full account numbers, raw signatures) must never be printed to stdout/logs under any circumstance. Mask or omit these fields entirely.
+
+## What to flag in review
+- Financial state transitions (escrow lock, settlement, refund, dispute) with no corresponding `Logger.log`/`Logger.error` call marking that milestone.
+- Logging calls that use only a free-text string with no structured context object (e.g. `this.logger.log('transfer done')` instead of `this.logger.log('transfer.settled', { transactionId, userId })`).
+- Any `console.log`/`logger.debug` call that includes a private key, secret, full JWT, raw signature, or other sensitive field — even temporarily, even guarded by an env check.
+- Logging of entire request/response objects or entire entity objects by reference, which risks incidentally dumping sensitive fields if the entity shape changes later.
+
+## Example
+
+```typescript
+// ❌ Bad — unstructured, leaks sensitive data
+this.logger.log(`Signing tx with key ${privateKey} for user ${userId}`);
+
+// ✅ Good — structured, masked, milestone-tagged
+this.logger.log('escrow.settlement.completed', {
+  transactionId: tx.id,
+  userId: user.id,
+  escrowId: escrow.id,
+  status: 'SETTLED',
+  // privateKey / signature intentionally omitted from logs
+});
+```

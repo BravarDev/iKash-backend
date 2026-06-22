@@ -1,0 +1,53 @@
+---
+description: Mandates atomic database transactions (e.g. Prisma $transaction) with explicit concurrency control for any mutation touching balances, payment routing, or P2P transaction state, to prevent partial-state failures and race conditions.
+globs:
+  - "src/**/*.service.ts"
+  - "src/**/*.repository.ts"
+  - "prisma/**/*.ts"
+alwaysApply: false
+---
+
+# Database Operations & Concurrency (PostgreSQL / Prisma)
+
+## Rule
+Any data mutation involving user balances, payment routing, or P2P transaction states must execute atomically.
+
+## Acceptance Criteria
+- Sequential, un-isolated database writes that could leave the system in a partial state (e.g. debit succeeds, credit fails) are strictly forbidden.
+- All such mutations must be wrapped in atomic **Database Transactions** using Prisma's `$transaction` (interactive transaction or batch form), with explicit concurrency controls (e.g. optimistic locking via a `version` column, or `SELECT ... FOR UPDATE`-equivalent row locking patterns) to prevent race conditions and double-spending.
+- Multi-step ledger operations (debit + credit, escrow lock + balance hold, status transition + audit write) must be in the same transactional boundary — never split across separate, independently-awaited calls.
+
+## What to flag in review
+- Two or more related `prisma.<model>.update`/`create` calls for a single logical operation (e.g. debit sender + credit receiver) that are *not* wrapped in `prisma.$transaction([...])` or an interactive `prisma.$transaction(async (tx) => { ... })` block.
+- Balance/escrow updates using a plain `update` without a concurrency guard (no `version` field check, no conditional `WHERE` clause based on prior known state) — vulnerable to lost-update races under concurrent requests.
+- Read-then-write patterns (`findUnique` followed later by `update` based on the read value) without locking or optimistic concurrency, which is a classic double-spend/race window.
+- Catch blocks that swallow transaction failures and continue, instead of letting the transaction roll back and propagating a clear error.
+
+## Example
+
+```typescript
+// ❌ Bad — two independent writes, no transaction, no concurrency control
+await this.prisma.account.update({
+  where: { id: fromId },
+  data: { balance: { decrement: amount } },
+});
+await this.prisma.account.update({
+  where: { id: toId },
+  data: { balance: { increment: amount } },
+});
+
+// ✅ Good — atomic, with optimistic concurrency via version check
+await this.prisma.$transaction(async (tx) => {
+  const from = await tx.account.update({
+    where: { id: fromId, version: expectedVersion },
+    data: { balance: { decrement: amount }, version: { increment: 1 } },
+  });
+  await tx.account.update({
+    where: { id: toId },
+    data: { balance: { increment: amount } },
+  });
+  await tx.transactionLog.create({
+    data: { fromId, toId, amount, status: 'SETTLED' },
+  });
+});
+```
